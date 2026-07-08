@@ -1,0 +1,18 @@
+# Terraform locais e cache
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+*.tfvars
+*.tfvars.json
+
+# Credenciais e chaves
+*.pem
+*.pub
+.env
+aws_credentials
+.aws/
+
+# Logs e arquivos do SO
+*.log
+.DS_Store
