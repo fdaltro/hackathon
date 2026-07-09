@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ngo-service
+  namespace: solidary
+  labels:
+    app: ngo-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ngo-service
+  template:
+    metadata:
+      labels:
+        app: ngo-service
+    spec:
+      containers:
+      - name: ngo-service
+        # Imagem apontando para o seu ECR
+        image: 158176292469.dkr.ecr.us-east-1.amazonaws.com/solidary-ngo:latest
+        ports:
+        - containerPort: 8081
+        envFrom:
+        - configMapRef:
+            name: ngo-config
+        - secretRef:
+            name: ngo-secret
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"

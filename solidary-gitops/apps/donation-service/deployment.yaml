@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: donation-service
+  namespace: solidary
+  labels:
+    app: donation-service
+spec:
+  replicas: 2 # Iniciando com 2 pods para alta disponibilidade
+  selector:
+    matchLabels:
+      app: donation-service
+  template:
+    metadata:
+      labels:
+        app: donation-service
+    spec:
+      containers:
+      - name: donation-service
+        image: 158176292469.dkr.ecr.us-east-1.amazonaws.com/solidary-donation:latest
+        ports:
+        - containerPort: 8082
+        envFrom:
+        - configMapRef:
+            name: donation-config
+        - secretRef:
+            name: donation-secret
+        - secretRef:
+            name: aws-credentials # Injeta chaves para ler a fila SQS
+        resources:
+          requests:
+            cpu: "50m" # Go é leve e consome pouca CPU base (FinOps)
+            memory: "64Mi"
+          limits:
+            cpu: "150m"
+            memory: "128Mi"

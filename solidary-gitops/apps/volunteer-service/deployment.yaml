@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: volunteer-service
+  namespace: solidary
+  labels:
+    app: volunteer-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: volunteer-service
+  template:
+    metadata:
+      labels:
+        app: volunteer-service
+    spec:
+      containers:
+      - name: volunteer-service
+        image: 158176292469.dkr.ecr.us-east-1.amazonaws.com/solidary-volunteer:latest
+        ports:
+        - containerPort: 8083
+        envFrom:
+        - configMapRef:
+            name: volunteer-config
+        - secretRef:
+            name: aws-credentials # Injeta chaves para ler o DynamoDB
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"

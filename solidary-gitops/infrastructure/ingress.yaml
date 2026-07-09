@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: solidary-ingress
+  namespace: solidary
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /ngos
+        pathType: Prefix
+        backend:
+          service:
+            name: ngo-service
+            port:
+              number: 8081
+      - path: /donations
+        pathType: Prefix
+        backend:
+          service:
+            name: donation-service
+            port:
+              number: 8082
+      - path: /volunteers
+        pathType: Prefix
+        backend:
+          service:
+            name: volunteer-service
+            port:
+              number: 8083
