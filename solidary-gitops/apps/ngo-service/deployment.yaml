@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
       - name: ngo-service
-        # Imagem apontando para o seu ECR
-        image: 158176292469.dkr.ecr.us-east-1.amazonaws.com/solidary-ngo:latest
+        # Nome curto - o Kustomize substitui pelo path completo do ECR + tag do commit
+        image: ngo-service
         ports:
         - containerPort: 8081
         envFrom:
@@ -26,6 +26,26 @@ spec:
             name: ngo-config
         - secretRef:
             name: ngo-secret
+
+        # ---> ENV PARA O OPENTELEMETRY <---
+        # COMENTADO: o module.observability (otel-collector) ainda não foi
+        # provisionado no Terraform. Descomente quando o coletor estiver
+        # rodando no namespace "observabilidade", senão a app vai tentar
+        # exportar traces para um endpoint que não existe.
+        # env:
+        # - name: OTEL_SERVICE_NAME
+        #   value: "ngo-service"
+        # - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        #   value: "http://otel-collector.observabilidade.svc.cluster.local:4317"
+        # - name: OTEL_EXPORTER_OTLP_INSECURE
+        #   value: "true"
+        # - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        #   value: "grpc"
+        # - name: OTEL_RESOURCE_ATTRIBUTES
+        #   value: "deployment.environment=production,service.version=1.0.0"
+        # - name: OTEL_PROPAGATORS
+        #   value: "tracecontext,baggage"
+
         resources:
           requests:
             cpu: "100m"
@@ -33,3 +53,17 @@ spec:
           limits:
             cpu: "200m"
             memory: "256Mi"
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 20

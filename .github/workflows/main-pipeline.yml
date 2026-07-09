@@ -24,7 +24,9 @@ env:
 jobs:
   # ==========================================================
   # JOB 1: Build, Scan de Segurança (DevSecOps) e Push
-  # Roda em paralelo para os 3 microsserviços via matrix
+  # Roda em paralelo para os 3 microsserviços via matrix.
+  # Tag usada = SHA do commit (o ECR é IMMUTABLE, ":latest"
+  # fixo quebraria no segundo push).
   # ==========================================================
   build-scan-push:
     name: Build & Push - ${{ matrix.service }}
@@ -60,7 +62,6 @@ jobs:
         run: |
           docker build \
             -t ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ github.sha }} \
-            -t ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:latest \
             .
 
       # ==========================================================
@@ -86,13 +87,14 @@ jobs:
 
       # ==========================================================
       # Push só acontece em push para main (não em Pull Requests)
+      # Apenas a tag do commit é publicada - sem ":latest", já
+      # que o repositório ECR é IMMUTABLE.
       # ==========================================================
       - name: Push da imagem para o ECR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: solidary-microservices/${{ matrix.service }}
         run: |
           docker push ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ github.sha }}
-          docker push ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:latest
 
       - name: Resumo do Job
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -101,3 +103,72 @@ jobs:
           echo "- **Serviço:** ${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Tag:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Registry:** ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================
+  # JOB 2: Atualiza o kustomization.yaml de cada serviço com a
+  # nova tag (SHA do commit) e comita de volta no repositório.
+  # O ArgoCD (automated.selfHeal=true) detecta a mudança no Git
+  # e sincroniza o cluster automaticamente - fluxo GitOps completo.
+  #
+  # Roda uma única vez, depois que os 3 builds da matrix
+  # terminarem, para evitar commits concorrentes conflitantes.
+  # ==========================================================
+  update-gitops-manifests:
+    name: Atualizar manifestos GitOps
+    runs-on: ubuntu-latest
+    needs: build-scan-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: write # necessário para o commit/push de volta ao repo
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Instalar kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          kustomize version
+
+      - name: Descobrir registry do ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Atualizar tag da imagem em cada serviço
+        run: |
+          set -e
+          for service in ngo-service donation-service volunteer-service; do
+            IMAGE="${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${service}"
+            echo "Atualizando $service -> $IMAGE:${{ github.sha }}"
+            # O deployment.yaml usa o nome curto (ex: "ngo-service") como
+            # placeholder de imagem - o kustomize casa por esse nome e
+            # substitui pelo path completo do ECR + tag do commit.
+            (cd "solidary-gitops/apps/${service}" && kustomize edit set image "${service}=${IMAGE}:${{ github.sha }}")
+          done
+
+      - name: Commit e push das mudanças
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "Nenhuma mudança para commitar."
+            exit 0
+          fi
+
+          git add solidary-gitops/apps/*/kustomization.yaml
+          git commit -m "ci: atualiza imagens para o commit ${{ github.sha }} [skip ci]"
+          git push
+
+      - name: Resumo
+        run: |
+          echo "### 🔄 Manifestos GitOps atualizados" >> $GITHUB_STEP_SUMMARY
+          echo "O ArgoCD deve sincronizar automaticamente em instantes." >> $GITHUB_STEP_SUMMARY
