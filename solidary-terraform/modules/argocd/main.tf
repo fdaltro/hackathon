@@ -13,14 +13,18 @@ terraform {
   }
 }
 
+# ==========================================================
 # 1. Criação do Namespace para o ArgoCD
+# ==========================================================
 resource "kubernetes_namespace" "argocd" {
   metadata {
     name = "argocd"
   }
 }
 
+# ==========================================================
 # 2. Instalação do ArgoCD via Helm
+# ==========================================================
 resource "helm_release" "argocd" {
   name       = "argocd"
   repository = "https://argoproj.github.io/argo-helm"
@@ -30,18 +34,19 @@ resource "helm_release" "argocd" {
 
   set {
     name  = "server.service.type"
-    value = "LoadBalancer"
+    value = "ClusterIP"
   }
 
   set {
-    name  = "server.extraArgs"
-    value = "{--insecure}"
+    name  = "server.extraArgs[0]"
+    value = "--insecure"
   }
 }
 
-# 3. CRIAÇÃO DINÂMICA DAS APLICAÇÕES DA SOLIDARY TECH
+# ==========================================================
+# 3. CRIAÇÃO DINÂMICA DAS APLICAÇÕES (NGO, DONATION, VOLUNTEER)
+# ==========================================================
 resource "kubectl_manifest" "solidary_apps" {
-  # Atualizado para os microsserviços do desafio atual
   for_each = toset(["ngo-service", "donation-service", "volunteer-service"])
 
   yaml_body = <<YAML
@@ -53,10 +58,12 @@ metadata:
 spec:
   project: default
   source:
-    # Lembre-se de criar esse repositório no seu GitHub para os manifestos K8s
-    repoURL: "https://github.com/fdaltro/solidary-gitops.git"
+    # 🎯 CORRIGIDO: Apontando para o monorepo real
+    repoURL: "https://github.com/fdaltro/hackathon.git"
     targetRevision: HEAD
-    path: "apps/${each.key}"
+    # 🎯 CORRIGIDO: O caminho precisa incluir a pasta solidary-gitops
+    path: "solidary-gitops/apps/${each.key}"
+    kustomize: {}
   destination:
     server: "https://kubernetes.default.svc"
     namespace: solidary
@@ -65,7 +72,37 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=false
+      - CreateNamespace=true
+YAML
+
+  depends_on = [helm_release.argocd]
+}
+
+# ==========================================================
+# 4. CRIAÇÃO DA APLICAÇÃO DE INFRAESTRUTURA (Ingress + HPA)
+# ==========================================================
+resource "kubectl_manifest" "solidary_infra" {
+  yaml_body = <<YAML
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: solidary-infrastructure
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: "https://github.com/fdaltro/hackathon.git"
+    targetRevision: HEAD
+    path: "solidary-gitops/infrastructure"
+    directory:
+      recurse: true
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: solidary
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
 YAML
 
   depends_on = [helm_release.argocd]

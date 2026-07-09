@@ -65,14 +65,17 @@ module "k8s_config" {
 }
 
 # ==========================================================
-# ❌ CONTINUAM COMENTADOS: DEPLOY AUTOMÁTICO E TELEMETRIA
+# 🚀 DEPLOY AUTOMÁTICO VIA GITOPS
 # ==========================================================
-/*
 module "argocd" {
   source     = "./modules/argocd"
   depends_on = [module.eks]
 }
 
+# ==========================================================
+# 🚀 COMENTADO: TELEMETRIA
+# ==========================================================
+/*
 module "observability" {
   source     = "./modules/observability"
   depends_on = [module.eks]

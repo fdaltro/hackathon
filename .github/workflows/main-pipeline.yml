@@ -1,0 +1,103 @@
+name: Main Pipeline - Microservices Build & Push
+
+# ============================================================
+# Dispara sempre que algo em solidary-microservices/ for
+# alterado na branch main (push) ou em Pull Requests.
+# ============================================================
+on:
+  push:
+    branches: [main]
+    paths:
+      - "solidary-microservices/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "solidary-microservices/**"
+  workflow_dispatch: {} # Permite rodar manualmente pela aba Actions
+
+env:
+  AWS_REGION: us-east-1
+  # Precisa bater exatamente com o nome gerado pelo módulo Terraform:
+  # name = "${var.project_name}-${each.value}" -> "solidary-tech-<service>"
+  PROJECT_NAME: solidary-tech
+
+jobs:
+  # ==========================================================
+  # JOB 1: Build, Scan de Segurança (DevSecOps) e Push
+  # Roda em paralelo para os 3 microsserviços via matrix
+  # ==========================================================
+  build-scan-push:
+    name: Build & Push - ${{ matrix.service }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ngo-service, donation-service, volunteer-service]
+
+    permissions:
+      contents: read
+      security-events: write # necessário para publicar o relatório do Trivy
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build da imagem Docker
+        working-directory: solidary-microservices/${{ matrix.service }}
+        run: |
+          docker build \
+            -t ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ github.sha }} \
+            -t ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:latest \
+            .
+
+      # ==========================================================
+      # DevSecOps: Scan de vulnerabilidades com Trivy (SAST/SCA)
+      # Não bloqueia o pipeline (exit-code 0), mas publica o
+      # relatório na aba "Security" do repositório no GitHub.
+      # ==========================================================
+      - name: Scan de segurança com Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ github.sha }}"
+          format: "sarif"
+          output: "trivy-results-${{ matrix.service }}.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0" # Troque para "1" se quiser que vulnerabilidades CRÍTICAS bloqueiem o build
+
+      - name: Publicar resultado do Trivy no GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-results-${{ matrix.service }}.sarif"
+          category: "trivy-${{ matrix.service }}"
+
+      # ==========================================================
+      # Push só acontece em push para main (não em Pull Requests)
+      # ==========================================================
+      - name: Push da imagem para o ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: solidary-microservices/${{ matrix.service }}
+        run: |
+          docker push ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ github.sha }}
+          docker push ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:latest
+
+      - name: Resumo do Job
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "### 🚀 Imagem publicada" >> $GITHUB_STEP_SUMMARY
+          echo "- **Serviço:** ${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry:** ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY

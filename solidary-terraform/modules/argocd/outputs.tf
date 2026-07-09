@@ -8,18 +8,20 @@ data "kubernetes_secret" "argocd_admin_pwd" {
   depends_on = [helm_release.argocd]
 }
 
-# Busca o serviço para pegar o endereço do LoadBalancer
-data "kubernetes_service" "argocd_server" {
-  metadata {
-    name      = "argocd-server"
-    namespace = "argocd"
-  }
-  depends_on = [helm_release.argocd]
-}
+# ==========================================================
+# Nota: o serviço "server.service.type" foi trocado para
+# ClusterIP (ver main.tf). Sem um LoadBalancer real, não há
+# hostname externo para expor aqui — o acesso à UI do ArgoCD
+# é feito via port-forward:
+#
+#   kubectl port-forward svc/argocd-server -n argocd 8080:443
+#
+# E depois acesse: https://localhost:8080
+# ==========================================================
 
-output "argocd_url" {
-  description = "URL de acesso ao ArgoCD"
-  value       = data.kubernetes_service.argocd_server.status[0].load_balancer[0].ingress[0].hostname
+output "argocd_access_instructions" {
+  description = "Como acessar a UI do ArgoCD (service é ClusterIP, sem LB externo)"
+  value       = "Rode: kubectl port-forward svc/argocd-server -n argocd 8080:443  e acesse https://localhost:8080"
 }
 
 output "argocd_password" {

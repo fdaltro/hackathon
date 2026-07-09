@@ -1,0 +1,137 @@
+name: Terraform Pipeline - Infrastructure
+
+# ============================================================
+# Dispara sempre que algo em solidary-terraform/ for alterado.
+# - Pull Request  -> roda apenas fmt/validate/plan (revisão)
+# - Push em main   -> roda plan + apply automaticamente
+# ============================================================
+on:
+  push:
+    branches: [main]
+    paths:
+      - "solidary-terraform/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "solidary-terraform/**"
+  workflow_dispatch: {} # Permite rodar manualmente pela aba Actions
+
+env:
+  AWS_REGION: us-east-1
+  TF_WORKING_DIR: solidary-terraform
+  # -----------------------------------------------------------
+  # Credenciais do AWS Academy (Access Key/Secret/Session Token
+  # expiram a cada poucas horas — atualize os Secrets do GitHub
+  # (Settings > Secrets and variables > Actions) sempre que
+  # renovar sua sessão no Learner Lab).
+  # -----------------------------------------------------------
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+  # As mesmas credenciais também alimentam as variáveis do
+  # Terraform usadas para criar o Secret do Kubernetes
+  # (module.k8s_config) com acesso a SQS/DynamoDB.
+  TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  TF_VAR_aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+jobs:
+  # ==========================================================
+  # JOB 1: Format, Validate e Plan
+  # Sempre roda (PR e push) - é a etapa de revisão
+  # ==========================================================
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+
+      - name: Publicar Plan como artefato
+        if: steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
+          retention-days: 1
+
+      - name: Resumo do Plan
+        run: |
+          echo "### 📋 Terraform Plan" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.plan.outputs.stdout }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Falhar job se o Plan falhou
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+  # ==========================================================
+  # JOB 2: Apply
+  # Só roda em push direto na main (nunca em Pull Request)
+  # ==========================================================
+  apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    # Dica: crie um Environment chamado "production" nas
+    # configurações do repositório (Settings > Environments) e
+    # exija aprovação manual antes do apply, se quiser um gate
+    # de segurança extra. Depois, descomente a linha abaixo:
+    # environment: production
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Baixar Plan gerado no job anterior
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Resumo do Apply
+        run: |
+          echo "### ✅ Infraestrutura aplicada com sucesso" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Executado por:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
