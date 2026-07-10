@@ -1,8 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - deployment.yaml
-  - service.yaml
-  - ngo-db-init.yaml
+- deployment.yaml
+- service.yaml
+- ngo-db-init.yaml
 namespace: solidary
-
+images:
+- name: ngo-service
+  newName: 158176292469.dkr.ecr.us-east-1.amazonaws.com/solidary-tech-ngo-service
+  newTag: v1.0.0-69ff84e
