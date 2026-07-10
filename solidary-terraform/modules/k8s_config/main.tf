@@ -48,7 +48,7 @@ resource "kubernetes_secret" "ngo_secret" {
   }
 
   data = {
-    DATABASE_URL = "postgres://solidary_user:solidary_password@${var.rds_endpoints["ngo"]}:5432/ngo_db"
+    DATABASE_URL = "postgres://solidary_user:solidary_password@${var.rds_endpoints["ngo"]}/ngo_db"
   }
 
   type = "Opaque"
@@ -77,7 +77,7 @@ resource "kubernetes_secret" "donation_secret" {
   }
 
   data = {
-    DATABASE_URL = "postgres://solidary_user:solidary_password@${var.rds_endpoints["donation"]}:5432/donation_db"
+    DATABASE_URL = "postgres://solidary_user:solidary_password@${var.rds_endpoints["donation"]}/donation_db"
   }
 
   type = "Opaque"
