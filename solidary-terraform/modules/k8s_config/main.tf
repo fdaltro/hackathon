@@ -100,8 +100,7 @@ resource "kubernetes_config_map" "volunteer_config" {
 }
 
 # ===========================================================
-# 6. PERMISSÃO AUTOMÁTICA PARA SELF-HEALING (AWS ACADEMY)
-# Garante que a Lambda (via LabRole) possa executar o restart
+# 6. PERMISSÃO AUTOMÁTICA PARA SELF-HEALING E NÓS (AWS ACADEMY)
 # ==========================================================
 resource "kubernetes_config_map_v1_data" "aws_auth_lambda" {
   metadata {
@@ -116,11 +115,11 @@ resource "kubernetes_config_map_v1_data" "aws_auth_lambda" {
 - groups:
     - system:bootstrappers
     - system:nodes
-  rolearn: arn:aws:iam::504491092699:role/LabNodesRole
+  rolearn: arn:aws:iam::158176292469:role/LabRole
   username: system:node:{{EC2PrivateDNSName}}
 - groups:
     - system:masters
-  rolearn: arn:aws:iam::504491092699:role/LabRole
+  rolearn: arn:aws:iam::158176292469:role/LabRole
   username: lambda-self-healing
 EOF
   }
