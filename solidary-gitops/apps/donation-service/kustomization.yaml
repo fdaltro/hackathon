@@ -7,3 +7,4 @@ resources:
   - donation-db-init.yaml
 
 namespace: solidary
+

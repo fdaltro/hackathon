@@ -5,3 +5,4 @@ resources:
   - service.yaml
   - ngo-db-init.yaml
 namespace: solidary
+
