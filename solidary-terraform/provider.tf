@@ -25,10 +25,11 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = ">= 1.14.0"
     }
-    datadog = {
-      source  = "datadog/datadog"
-      version = "~> 3.0"
-    }
+    # COMENTADO: Datadog não está em uso no momento
+    # datadog = {
+    #   source  = "datadog/datadog"
+    #   version = "~> 3.0"
+    # }
   }
 }
 
@@ -65,7 +66,8 @@ provider "kubectl" {
   load_config_file       = false
 }
 
-provider "datadog" {
-  api_key = "652f13a64d96b3cdb72aa07516d7f9a5"
-  app_key = "ddapp_q7r7xtm4M6MYYBmEB9PHecRIwRzq0ng7wb"
-}
+# COMENTADO: Datadog não está em uso no momento
+# provider "datadog" {
+#   api_key = var.datadog_api_key
+#   app_key = var.datadog_app_key
+# }

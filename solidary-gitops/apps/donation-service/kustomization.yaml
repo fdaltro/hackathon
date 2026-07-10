@@ -4,5 +4,6 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
+  - donation-db-init.yaml
 
 namespace: solidary

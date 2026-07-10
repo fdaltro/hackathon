@@ -73,11 +73,9 @@ module "argocd" {
 }
 
 # ==========================================================
-# 🚀 COMENTADO: TELEMETRIA
+# 🚀 TELEMETRIA
 # ==========================================================
-/*
 module "observability" {
   source     = "./modules/observability"
   depends_on = [module.eks]
 }
-*/

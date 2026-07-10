@@ -101,7 +101,7 @@ resource "kubernetes_config_map" "volunteer_config" {
 
 # ===========================================================
 # 6. PERMISSÃO AUTOMÁTICA PARA SELF-HEALING (AWS ACADEMY)
-# Garante que a LabRole tenha acesso master ao EKS
+# Garante que a Lambda (via LabRole) possa executar o restart
 # ==========================================================
 resource "kubernetes_config_map_v1_data" "aws_auth_lambda" {
   metadata {

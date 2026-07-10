@@ -19,6 +19,22 @@ variable "aws_access_key" { type = string }
 variable "aws_secret_key" { type = string }
 variable "aws_session_token" { type = string }
 
+# --- Observabilidade (nunca hardcode - injete via TF_VAR_* ou GitHub Secrets) ---
+# COMENTADO: Datadog e PagerDuty não estão em uso no momento
+# variable "datadog_api_key" {
+#   type      = string
+#   sensitive = true
+# }
+# variable "datadog_app_key" {
+#   type      = string
+#   sensitive = true
+# }
+# variable "pagerduty_integration_key" {
+#   type      = string
+#   sensitive = true
+#   default   = ""
+# }
+
 # --- Tags Globais para FinOps ---
 variable "default_tags" {
   type = map(string)
