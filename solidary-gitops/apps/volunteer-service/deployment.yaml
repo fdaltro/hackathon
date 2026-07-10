@@ -28,23 +28,19 @@ spec:
             name: aws-credentials # Injeta chaves para ler o DynamoDB
 
         # ---> ENV PARA O OPENTELEMETRY <---
-        # COMENTADO: o module.observability (otel-collector) ainda não foi
-        # provisionado no Terraform. Descomente quando o coletor estiver
-        # rodando no namespace "observabilidade", senão a app vai tentar
-        # exportar traces para um endpoint que não existe.
-        # env:
-        # - name: OTEL_SERVICE_NAME
-        #   value: "volunteer-service"
-        # - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        #   value: "http://otel-collector.observabilidade.svc.cluster.local:4317"
-        # - name: OTEL_EXPORTER_OTLP_INSECURE
-        #   value: "true"
-        # - name: OTEL_EXPORTER_OTLP_PROTOCOL
-        #   value: "grpc"
-        # - name: OTEL_RESOURCE_ATTRIBUTES
-        #   value: "deployment.environment=production,service.version=1.0.0"
-        # - name: OTEL_PROPAGATORS
-        #   value: "tracecontext,baggage"
+        env:
+        - name: OTEL_SERVICE_NAME
+          value: "volunteer-service"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector.observabilidade.svc.cluster.local:4317"
+        - name: OTEL_EXPORTER_OTLP_INSECURE
+          value: "true"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "grpc"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "deployment.environment=production,service.version=1.0.0"
+        - name: OTEL_PROPAGATORS
+          value: "tracecontext,baggage"
 
         resources:
           requests:

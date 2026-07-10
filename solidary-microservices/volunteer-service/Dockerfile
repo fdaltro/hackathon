@@ -42,5 +42,6 @@ EXPOSE 8083
 # Altera o contexto para o usuário não-raiz antes da execução
 USER appuser
 
-# Inicializa o serviço utilizando Gunicorn configurado para concorrência
-CMD ["gunicorn", "--bind", "0.0.0.0:8083", "--workers", "2", "--threads", "2", "app:app"]
+# Inicializa o serviço utilizando Gunicorn, envolvido pelo agente de
+# auto-instrumentação do OpenTelemetry (zero-code instrumentation)
+CMD ["opentelemetry-instrument", "gunicorn", "--bind", "0.0.0.0:8083", "--workers", "2", "--threads", "2", "app:app"]

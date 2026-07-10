@@ -1,13 +1,12 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
-	//"fmt"
 	"log"
 	"net/http"
 	"os"
-	//"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -15,6 +14,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/joho/godotenv"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
 type Donation struct {
@@ -32,8 +39,81 @@ type App struct {
 	SqsQueueURL string
 }
 
+// initTracer configura o SDK do OpenTelemetry lendo as variáveis padrão
+// OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_SERVICE_NAME injetadas no Deployment.
+// Retorna uma função de shutdown que deve ser chamada ao encerrar a aplicação.
+func initTracer() func(context.Context) error {
+	ctx := context.Background()
+
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "otel-collector.observabilidade.svc.cluster.local:4317"
+	}
+	// O exporter espera host:porta, sem o esquema http://
+	endpoint = trimScheme(endpoint)
+
+	serviceName := os.Getenv("OTEL_SERVICE_NAME")
+	if serviceName == "" {
+		serviceName = "donation-service"
+	}
+
+	exporter, err := otlptracegrpc.New(
+		ctx,
+		otlptracegrpc.WithEndpoint(endpoint),
+		otlptracegrpc.WithInsecure(),
+	)
+	if err != nil {
+		log.Printf("AVISO: não foi possível iniciar o exporter OTLP (%v). Tracing desativado.", err)
+		return func(context.Context) error { return nil }
+	}
+
+	res, _ := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceName(serviceName),
+			semconv.ServiceVersion("1.0.0"),
+		),
+	)
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+	)
+
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
+	log.Printf("OpenTelemetry tracing ativado - exportando para %s", endpoint)
+	return tp.Shutdown
+}
+
+func trimScheme(endpoint string) string {
+	endpoint = trimPrefix(endpoint, "http://")
+	endpoint = trimPrefix(endpoint, "https://")
+	return endpoint
+}
+
+func trimPrefix(s, prefix string) string {
+	if len(s) >= len(prefix) && s[:len(prefix)] == prefix {
+		return s[len(prefix):]
+	}
+	return s
+}
+
 func main() {
 	_ = godotenv.Load()
+
+	// --- Inicialização do OpenTelemetry ---
+	shutdown := initTracer()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdown(ctx); err != nil {
+			log.Printf("Erro ao encerrar o exporter de tracing: %v", err)
+		}
+	}()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -66,8 +146,12 @@ func main() {
 	mux.HandleFunc("/health", app.HealthHandler)
 	mux.HandleFunc("/donations", app.DonationHandler)
 
+	// Envolve todas as rotas com o middleware de tracing do OpenTelemetry -
+	// cada requisição HTTP vira um span automaticamente (Distributed Tracing)
+	handler := otelhttp.NewHandler(mux, "donation-service")
+
 	log.Printf("donation-service rodando na porta %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
 
 func (a *App) HealthHandler(w http.ResponseWriter, r *http.Request) {

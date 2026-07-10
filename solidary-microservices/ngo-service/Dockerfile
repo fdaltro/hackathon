@@ -47,5 +47,6 @@ EXPOSE 8081
 # Altera o contexto de execução para o usuário não-privilegiado
 USER appuser
 
-# Executa a aplicação usando o Gunicorn em produção (como pede o README)
-CMD ["gunicorn", "--bind", "0.0.0.0:8081", "--workers", "2", "--threads", "2", "app:app"]
+# Executa a aplicação usando o Gunicorn em produção, envolvido pelo
+# agente de auto-instrumentação do OpenTelemetry (zero-code instrumentation)
+CMD ["opentelemetry-instrument", "gunicorn", "--bind", "0.0.0.0:8081", "--workers", "2", "--threads", "2", "app:app"]

@@ -120,6 +120,10 @@ resource "helm_release" "grafana" {
     name  = "adminPassword"
     value = "admin123"
   }
+  set {
+    name  = "service.type"
+    value = "LoadBalancer"
+  }
 
   values = [
     yamlencode({
