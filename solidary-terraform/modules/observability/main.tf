@@ -27,18 +27,35 @@ resource "helm_release" "prometheus" {
   namespace  = kubernetes_namespace.monitoring.metadata[0].name
   timeout    = 600
 
-  set { name = "server.extraFlags[0]", value = "web.enable-remote-write-receiver" }
-  set { name = "server.extraFlags[1]", value = "enable-feature=remote-write-receiver" }
-  set { name = "server.extraFlags[2]", value = "web.enable-lifecycle" }
-  set { name = "server.persistentVolume.enabled", value = "false" }
-  set { name = "alertmanager.enabled", value = "false" }
-  set { name = "service.type", value = "LoadBalancer" }
-  set { name = "pushgateway.persistentVolume.enabled", value = "false" }
-  # COMENTADO: Alertmanager manual (bloco 5) existia só para rotear ao PagerDuty
-  # set { name = "server.alertmanagers[0].static_configs[0].targets[0]", value = "alertmanager-manual-svc.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:9093" }
+  set {
+    name  = "server.extraFlags[0]"
+    value = "web.enable-remote-write-receiver"
+  }
+  set {
+    name  = "server.extraFlags[1]"
+    value = "enable-feature=remote-write-receiver"
+  }
+  set {
+    name  = "server.extraFlags[2]"
+    value = "web.enable-lifecycle"
+  }
+  set {
+    name  = "server.persistentVolume.enabled"
+    value = "false"
+  }
+  set {
+    name  = "alertmanager.enabled"
+    value = "false"
+  }
+  set {
+    name  = "service.type"
+    value = "LoadBalancer"
+  }
+  set {
+    name  = "pushgateway.persistentVolume.enabled"
+    value = "false"
+  }
 
-  # --- Regras de alerta continuam ativas e visíveis na UI do Prometheus,
-  # apenas sem um Alertmanager para disparar notificações externas ---
   values = [
     yamlencode({
       serverFiles = {
@@ -79,7 +96,10 @@ resource "helm_release" "loki" {
   namespace  = kubernetes_namespace.monitoring.metadata[0].name
   timeout    = 600
 
-  set { name = "loki.persistence.enabled", value = "false" }
+  set {
+    name  = "loki.persistence.enabled"
+    value = "false"
+  }
 }
 
 # ==========================================================
@@ -92,8 +112,14 @@ resource "helm_release" "grafana" {
   namespace  = kubernetes_namespace.monitoring.metadata[0].name
   timeout    = 600
 
-  set { name = "persistence.enabled", value = "false" }
-  set { name = "adminPassword", value = "admin123" }
+  set {
+    name  = "persistence.enabled"
+    value = "false"
+  }
+  set {
+    name  = "adminPassword"
+    value = "admin123"
+  }
 
   values = [
     yamlencode({
@@ -111,84 +137,6 @@ resource "helm_release" "grafana" {
   ]
 }
 
-# COMENTADO: Alertmanager manual existia só para rotear ao PagerDuty (não em uso no momento)
-# # ==========================================================
-# # 5. ALERTMANAGER MANUAL (Solução de Contorno)
-# # ==========================================================
-# resource "kubernetes_config_map" "alertmanager_config" {
-#   metadata {
-#     name      = "prometheus-alertmanager"
-#     namespace = kubernetes_namespace.monitoring.metadata[0].name
-#   }
-#
-#   data = {
-#     "alertmanager.yml" = yamlencode({
-#       global = { resolve_timeout = "5m" }
-#       route = {
-#         group_by        = ["alertname", "job"]
-#         group_wait      = "10s"
-#         group_interval  = "10s"
-#         repeat_interval = "1h"
-#         receiver        = "pagerduty-solidary"
-#       }
-#       receivers = [
-#         {
-#           name = "pagerduty-solidary"
-#           pagerduty_configs = [
-#             {
-#               service_key   = var.pagerduty_integration_key
-#               send_resolved = true
-#               client        = "Prometheus Alertmanager (AWS Academy)"
-#               description   = "Alerta Prometheus: {{ .CommonAnnotations.summary }}"
-#               severity      = "{{ if eq .CommonLabels.severity \"critical\" }}critical{{ else }}warning{{ end }}"
-#             }
-#           ]
-#         }
-#       ]
-#     })
-#   }
-# }
-#
-# resource "kubernetes_deployment" "alertmanager_manual" {
-#   depends_on = [kubernetes_config_map.alertmanager_config]
-#   metadata {
-#     name      = "alertmanager-manual"
-#     namespace = kubernetes_namespace.monitoring.metadata[0].name
-#     labels    = { app = "alertmanager-manual" }
-#   }
-#   spec {
-#     replicas = 1
-#     selector { match_labels = { app = "alertmanager-manual" } }
-#     template {
-#       metadata { labels = { app = "alertmanager-manual" } }
-#       spec {
-#         container {
-#           name  = "alertmanager"
-#           image = "quay.io/prometheus/alertmanager:v0.32.1"
-#           args  = ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
-#           port { container_port = 9093; name = "http" }
-#           volume_mount { name = "config-volume"; mount_path = "/etc/alertmanager" }
-#           volume_mount { name = "storage-volume"; mount_path = "/alertmanager" }
-#         }
-#         volume { name = "config-volume"; config_map { name = "prometheus-alertmanager" } }
-#         volume { name = "storage-volume"; empty_dir {} }
-#       }
-#     }
-#   }
-# }
-#
-# resource "kubernetes_service" "alertmanager_manual_svc" {
-#   metadata {
-#     name      = "alertmanager-manual-svc"
-#     namespace = kubernetes_namespace.monitoring.metadata[0].name
-#   }
-#   spec {
-#     selector = { app = "alertmanager-manual" }
-#     port { port = 9093; target_port = 9093; name = "http" }
-#     type = "ClusterIP"
-#   }
-# }
-
 # ==========================================================
 # 6. JAEGER (Backend de Traces - Em Memória)
 # ==========================================================
@@ -199,8 +147,14 @@ resource "helm_release" "jaeger" {
   namespace  = kubernetes_namespace.monitoring.metadata[0].name
   timeout    = 600
 
-  set { name = "allInOne.enabled", value = "true" }
-  set { name = "storage.type", value = "memory" }
+  set {
+    name  = "allInOne.enabled"
+    value = "true"
+  }
+  set {
+    name  = "storage.type"
+    value = "memory"
+  }
 }
 
 # ==========================================================
@@ -214,9 +168,18 @@ resource "helm_release" "otel_collector" {
   timeout    = 600
   depends_on = [helm_release.prometheus, helm_release.loki, helm_release.jaeger]
 
-  set { name = "image.repository", value = "otel/opentelemetry-collector-contrib" }
-  set { name = "fullnameOverride", value = "otel-collector" }
-  set { name = "image.tag", value = "0.104.0" }
+  set {
+    name  = "image.repository"
+    value = "otel/opentelemetry-collector-contrib"
+  }
+  set {
+    name  = "fullnameOverride"
+    value = "otel-collector"
+  }
+  set {
+    name  = "image.tag"
+    value = "0.104.0"
+  }
 
   values = [
     yamlencode({
@@ -225,27 +188,22 @@ resource "helm_release" "otel_collector" {
         extensions = { health_check = { endpoint = "0.0.0.0:13133" } }
         receivers = { otlp = { protocols = { grpc = { endpoint = "0.0.0.0:4317" }, http = { endpoint = "0.0.0.0:4318" } } } }
         processors = {
-          batch = { send_batch_size = 1000; timeout = "10s" }
-          memory_limiter = { check_interval = "5s"; limit_mib = 250; spike_limit_mib = 50 }
+          batch = { send_batch_size = 1000, timeout = "10s" }
+          memory_limiter = { check_interval = "5s", limit_mib = 250, spike_limit_mib = 50 }
           resourcedetection = { detectors = ["env", "system"] }
         }
         exporters = {
-          prometheusremotewrite = { endpoint = "http://prometheus-server.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:80/api/v1/write"; tls = { insecure = true } }
+          prometheusremotewrite = { endpoint = "http://prometheus-server.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:80/api/v1/write", tls = { insecure = true } }
           loki = { endpoint = "http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100/loki/api/v1/push" }
-          "otlp/jaeger" = { endpoint = "jaeger.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:4317"; tls = { insecure = true } }
-          # COMENTADO: Datadog não está em uso no momento
-          # datadog = {
-          #   api = { key = var.datadog_api_key; site = "datadoghq.com" }
-          #   metrics = { endpoint = "http://datadog.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:4318" }
-          # }
+          "otlp/jaeger" = { endpoint = "jaeger.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:4317", tls = { insecure = true } }
         }
         service = {
           telemetry = { metrics = { level = "none" } }
           extensions = ["health_check"]
           pipelines = {
-            metrics = { receivers = ["otlp"]; processors = ["resourcedetection", "memory_limiter", "batch"]; exporters = ["prometheusremotewrite"] }
-            logs = { receivers = ["otlp"]; processors = ["resourcedetection", "memory_limiter", "batch"]; exporters = ["loki"] }
-            traces = { receivers = ["otlp"]; processors = ["resourcedetection", "memory_limiter", "batch"]; exporters = ["otlp/jaeger"] }
+            metrics = { receivers = ["otlp"], processors = ["resourcedetection", "memory_limiter", "batch"], exporters = ["prometheusremotewrite"] }
+            logs = { receivers = ["otlp"], processors = ["resourcedetection", "memory_limiter", "batch"], exporters = ["loki"] }
+            traces = { receivers = ["otlp"], processors = ["resourcedetection", "memory_limiter", "batch"], exporters = ["otlp/jaeger"] }
           }
         }
       }
@@ -261,7 +219,11 @@ resource "helm_release" "metrics_server" {
   repository = "https://kubernetes-sigs.github.io/metrics-server/"
   chart      = "metrics-server"
   namespace  = "kube-system"
-  set { name = "args[0]", value = "--kubelet-insecure-tls" }
+  
+  set {
+    name  = "args[0]"
+    value = "--kubelet-insecure-tls"
+  }
 }
 
 # ===========================================================
