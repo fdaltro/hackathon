@@ -239,20 +239,61 @@ resource "helm_release" "datadog_agent" {
   namespace  = kubernetes_namespace.monitoring.metadata[0].name
   timeout    = 600
 
-  set_sensitive { name = "datadog.apiKey", value = var.datadog_api_key }
+  set_sensitive {
+    name  = "datadog.apiKey"
+    value = var.datadog_api_key
+  }
 
-  set { name = "datadog.otlp.receiver.protocols.grpc.enabled", value = "true" }
-  set { name = "datadog.otlp.receiver.protocols.grpc.endpoint", value = "0.0.0.0:4317" }
-  set { name = "datadog.otlp.receiver.protocols.http.enabled", value = "true" }
-  set { name = "datadog.otlp.receiver.protocols.http.endpoint", value = "0.0.0.0:4318" }
-  set { name = "datadog.site", value = "datadoghq.com" }
-  set { name = "datadog.logs.enabled", value = "true" }
-  set { name = "datadog.logs.containerCollectAll", value = "true" }
-  set { name = "datadog.apm.portEnabled", value = "true" }
-  set { name = "clusterAgent.enabled", value = "true" }
-  set { name = "datadog.kubelet.tlsVerify", value = "false" }
+  set {
+    name  = "datadog.otlp.receiver.protocols.grpc.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "datadog.otlp.receiver.protocols.grpc.endpoint"
+    value = "0.0.0.0:4317"
+  }
+
+  set {
+    name  = "datadog.otlp.receiver.protocols.http.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "datadog.otlp.receiver.protocols.http.endpoint"
+    value = "0.0.0.0:4318"
+  }
+
+  set {
+    name  = "datadog.site"
+    value = "datadoghq.com"
+  }
+
+  set {
+    name  = "datadog.logs.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "datadog.logs.containerCollectAll"
+    value = "true"
+  }
+
+  set {
+    name  = "datadog.apm.portEnabled"
+    value = "true"
+  }
+
+  set {
+    name  = "clusterAgent.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "datadog.kubelet.tlsVerify"
+    value = "false"
+  }
 }
-
 # COMENTADO: Datadog não está em uso no momento
 # # ==========================================================
 # # 10. ALERTA INTELIGENTE (Monitorando donation-service)
