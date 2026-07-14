@@ -4,6 +4,10 @@ terraform {
       source  = "datadog/datadog"
       version = "~> 3.0"
     }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = ">= 1.14.0"
+    }
   }
 }
 
