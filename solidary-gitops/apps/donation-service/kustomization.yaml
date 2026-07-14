@@ -10,4 +10,4 @@ namespace: solidary
 images:
 - name: donation-service
   newName: 158176292469.dkr.ecr.us-east-1.amazonaws.com/solidary-tech-donation-service
-  newTag: v1.0.0-4459e03
+  newTag: v1.0.0-dc25cb9
