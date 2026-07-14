@@ -1,12 +1,11 @@
-# COMENTADO: Datadog não está em uso no momento (nenhum provider configurado)
-# terraform {
-#   required_providers {
-#     datadog = {
-#       source  = "datadog/datadog"
-#       version = "~> 3.0"
-#     }
-#   }
-# }
+terraform {
+  required_providers {
+    datadog = {
+      source  = "datadog/datadog"
+      version = "~> 3.0"
+    }
+  }
+}
 
 # ==========================================================
 # 1. NAMESPACE
@@ -120,10 +119,6 @@ resource "helm_release" "grafana" {
     name  = "adminPassword"
     value = "admin123"
   }
-  set {
-    name  = "service.type"
-    value = "LoadBalancer"
-  }
 
   values = [
     yamlencode({
@@ -200,14 +195,18 @@ resource "helm_release" "otel_collector" {
           prometheusremotewrite = { endpoint = "http://prometheus-server.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:80/api/v1/write", tls = { insecure = true } }
           loki = { endpoint = "http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100/loki/api/v1/push" }
           "otlp/jaeger" = { endpoint = "jaeger.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:4317", tls = { insecure = true } }
+          datadog = {
+            api = { key = var.datadog_api_key, site = "datadoghq.com" }
+            metrics = { endpoint = "http://datadog.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:4318" }
+          }
         }
         service = {
           telemetry = { metrics = { level = "none" } }
           extensions = ["health_check"]
           pipelines = {
-            metrics = { receivers = ["otlp"], processors = ["resourcedetection", "memory_limiter", "batch"], exporters = ["prometheusremotewrite"] }
+            metrics = { receivers = ["otlp"], processors = ["resourcedetection", "memory_limiter", "batch"], exporters = ["prometheusremotewrite", "datadog"] }
             logs = { receivers = ["otlp"], processors = ["resourcedetection", "memory_limiter", "batch"], exporters = ["loki"] }
-            traces = { receivers = ["otlp"], processors = ["resourcedetection", "memory_limiter", "batch"], exporters = ["otlp/jaeger"] }
+            traces = { receivers = ["otlp"], processors = ["resourcedetection", "memory_limiter", "batch"], exporters = ["otlp/jaeger", "datadog"] }
           }
         }
       }
@@ -232,28 +231,27 @@ resource "helm_release" "metrics_server" {
 
 # ===========================================================
 # 9. DATADOG AGENT (Âncora de Infraestrutura & Receptor OTLP)
-# COMENTADO: Datadog não está em uso no momento
 # ===========================================================
-# resource "helm_release" "datadog_agent" {
-#   name       = "datadog"
-#   repository = "https://helm.datadoghq.com"
-#   chart      = "datadog"
-#   namespace  = kubernetes_namespace.monitoring.metadata[0].name
-#   timeout    = 600
-#
-#   set_sensitive { name = "datadog.apiKey", value = var.datadog_api_key }
-#
-#   set { name = "datadog.otlp.receiver.protocols.grpc.enabled", value = "true" }
-#   set { name = "datadog.otlp.receiver.protocols.grpc.endpoint", value = "0.0.0.0:4317" }
-#   set { name = "datadog.otlp.receiver.protocols.http.enabled", value = "true" }
-#   set { name = "datadog.otlp.receiver.protocols.http.endpoint", value = "0.0.0.0:4318" }
-#   set { name = "datadog.site", value = "datadoghq.com" }
-#   set { name = "datadog.logs.enabled", value = "true" }
-#   set { name = "datadog.logs.containerCollectAll", value = "true" }
-#   set { name = "datadog.apm.portEnabled", value = "true" }
-#   set { name = "clusterAgent.enabled", value = "true" }
-#   set { name = "datadog.kubelet.tlsVerify", value = "false" }
-# }
+resource "helm_release" "datadog_agent" {
+  name       = "datadog"
+  repository = "https://helm.datadoghq.com"
+  chart      = "datadog"
+  namespace  = kubernetes_namespace.monitoring.metadata[0].name
+  timeout    = 600
+
+  set_sensitive { name = "datadog.apiKey", value = var.datadog_api_key }
+
+  set { name = "datadog.otlp.receiver.protocols.grpc.enabled", value = "true" }
+  set { name = "datadog.otlp.receiver.protocols.grpc.endpoint", value = "0.0.0.0:4317" }
+  set { name = "datadog.otlp.receiver.protocols.http.enabled", value = "true" }
+  set { name = "datadog.otlp.receiver.protocols.http.endpoint", value = "0.0.0.0:4318" }
+  set { name = "datadog.site", value = "datadoghq.com" }
+  set { name = "datadog.logs.enabled", value = "true" }
+  set { name = "datadog.logs.containerCollectAll", value = "true" }
+  set { name = "datadog.apm.portEnabled", value = "true" }
+  set { name = "clusterAgent.enabled", value = "true" }
+  set { name = "datadog.kubelet.tlsVerify", value = "false" }
+}
 
 # COMENTADO: Datadog não está em uso no momento
 # # ==========================================================

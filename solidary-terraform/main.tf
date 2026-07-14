@@ -76,6 +76,20 @@ module "argocd" {
 # 🚀 TELEMETRIA
 # ==========================================================
 module "observability" {
-  source     = "./modules/observability"
-  depends_on = [module.eks]
+  source          = "./modules/observability"
+  datadog_api_key = var.datadog_api_key
+  depends_on      = [module.eks]
+}
+
+# ==========================================================
+# 🛡️ DISASTER RECOVERY (Velero -> Backup para S3 externo)
+# ==========================================================
+module "velero" {
+  source            = "./modules/velero"
+  project_name      = var.project_name
+  region            = var.region
+  aws_access_key    = var.aws_access_key
+  aws_secret_key    = var.aws_secret_key
+  aws_session_token = var.aws_session_token
+  depends_on        = [module.eks]
 }
