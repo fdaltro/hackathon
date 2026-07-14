@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = ">= 1.14.0"
+    }
+  }
+}
+
 # ==========================================================
 # Estratégia de DR (Opção A - Multicloud/Cross-Region Backup):
 # Velero fazendo backup do estado do cluster (manifestos +
