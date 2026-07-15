@@ -21,7 +21,7 @@ resource "kubernetes_namespace" "monitoring" {
 }
 
 # ==========================================================
-# 2. PROMETHEUS (Com Alertmanager e Integração PagerDuty)
+# 2. PROMETHEUS (Sem Alertmanager nativo e sem discos)
 # ==========================================================
 resource "helm_release" "prometheus" {
   name       = "prometheus"
@@ -55,19 +55,20 @@ resource "helm_release" "prometheus" {
     value = "LoadBalancer"
   }
 
-  # LIGANDO O ALERTMANAGER
+  # DESLIGA O ALERTMANAGER DO HELM
   set {
     name  = "alertmanager.enabled"
-    value = "true" 
-  }
-  set {
-    name  = "alertmanager.persistentVolume.enabled"
     value = "false"
+  }
+
+  # APONTA PARA O ALERTMANAGER MANUAL
+  set {
+    name  = "server.alertmanagers[0].static_configs[0].targets[0]"
+    value = "alertmanager-manual-svc.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:9093"
   }
 
   values = [
     yamlencode({
-      # 1. REGRAS DO PROMETHEUS (O Detetive)
       serverFiles = {
         "alerting_rules.yml" = {
           groups = [
@@ -86,40 +87,19 @@ resource "helm_release" "prometheus" {
                     summary     = "Fast Burn Rate detectado!"
                     description = "O serviço está consumindo o Error Budget 14.4x mais rápido que o normal. Risco de esgotamento total em 2 dias."
                   }
-                }
-              ]
-            }
-          ]
-        }
-      }
-
-      # 2. ROTAS DO ALERTMANAGER (O Despachante)
-      alertmanagerFiles = {
-        "alertmanager.yml" = {
-          global = {
-            resolve_timeout = "5m"
-          }
-          route = {
-            group_by        = ["alertname", "job"]
-            group_wait      = "30s"
-            group_interval  = "5m"
-            repeat_interval = "12h"
-            receiver        = "pagerduty-critical"
-            routes = [
-              {
-                matchers = ["severity = critical"]
-                receiver = "pagerduty-critical"
-              }
-            ]
-          }
-          receivers = [
-            {
-              name = "pagerduty-critical"
-              pagerduty_configs = [
+                },
                 {
-                  routing_key = var.pagerduty_integration_key
-                  description = "{{ .CommonAnnotations.summary }} - {{ .CommonAnnotations.description }}"
-                  severity    = "critical"
+                  alert = "SLOSlowBurn"
+                  expr  = "sum(rate(http_server_duration_milliseconds_count{http_status_code=~\"5..\"}[6h])) / sum(rate(http_server_duration_milliseconds_count[6h])) > 0.006"
+                  for   = "15m"
+                  labels = {
+                    severity = "warning"
+                    team     = "sre-solidary"
+                  }
+                  annotations = {
+                    summary     = "Slow Burn Rate detectado."
+                    description = "O serviço está consumindo o Error Budget 6x mais rápido que o normal ao longo de 6 horas."
+                  }
                 }
               ]
             }
@@ -241,6 +221,134 @@ resource "helm_release" "grafana" {
     })
   ]
 }
+
+# ==========================================================
+# 5. ALERTMANAGER MANUAL (Solução de Contorno)
+# ==========================================================
+resource "kubernetes_config_map" "alertmanager_config" {
+  metadata {
+    name      = "prometheus-alertmanager"
+    namespace = kubernetes_namespace.monitoring.metadata[0].name
+  }
+
+  data = {
+    "alertmanager.yml" = yamlencode({
+      global = {
+        resolve_timeout = "5m"
+      }
+      route = {
+        group_by        = ["alertname", "job"]
+        group_wait      = "10s"
+        group_interval  = "10s"
+        repeat_interval = "1h"
+        receiver        = "pagerduty-solidary" 
+      }
+      receivers = [
+        {
+          name = "pagerduty-solidary"
+          pagerduty_configs = [
+            {
+              service_key   = var.pagerduty_integration_key # Usa a variável do Terraform
+              send_resolved = true
+              client        = "Prometheus Alertmanager (AWS Academy)"
+              description   = "Alerta Prometheus: {{ .CommonAnnotations.summary }}"
+              severity      = "{{ if eq .CommonLabels.severity \"critical\" }}critical{{ else }}warning{{ end }}"
+            }
+          ]
+        }
+      ]
+    })
+  }
+}
+
+resource "kubernetes_deployment" "alertmanager_manual" {
+  depends_on = [kubernetes_config_map.alertmanager_config]
+
+  metadata {
+    name      = "alertmanager-manual"
+    namespace = kubernetes_namespace.monitoring.metadata[0].name
+    labels = {
+      app = "alertmanager-manual"
+    }
+  }
+
+  spec {
+    replicas = 1
+    selector {
+      match_labels = {
+        app = "alertmanager-manual"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "alertmanager-manual"
+        }
+      }
+
+      spec {
+        container {
+          name  = "alertmanager"
+          image = "quay.io/prometheus/alertmanager:v0.32.1"
+          args  = [
+            "--config.file=/etc/alertmanager/alertmanager.yml",
+            "--storage.path=/alertmanager"
+          ]
+
+          port {
+            container_port = 9093
+            name           = "http"
+          }
+
+          volume_mount {
+            name       = "config-volume"
+            mount_path = "/etc/alertmanager"
+          }
+
+          volume_mount {
+            name       = "storage-volume"
+            mount_path = "/alertmanager"
+          }
+        }
+
+        volume {
+          name = "config-volume"
+          config_map {
+            name = "prometheus-alertmanager"
+          }
+        }
+
+        volume {
+          name = "storage-volume"
+          empty_dir {}
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "alertmanager_manual_svc" {
+  metadata {
+    name      = "alertmanager-manual-svc"
+    namespace = kubernetes_namespace.monitoring.metadata[0].name
+  }
+
+  spec {
+    selector = {
+      app = "alertmanager-manual"
+    }
+
+    port {
+      port        = 9093
+      target_port = 9093
+      name        = "http"
+    }
+
+    type = "ClusterIP"
+  }
+}
+
 
 # ==========================================================
 # 6. JAEGER (Backend de Traces - Em Memória)
