@@ -200,7 +200,7 @@ resource "helm_release" "otel_collector" {
           loki = { endpoint = "http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100/loki/api/v1/push" }
           "otlp/jaeger" = { endpoint = "jaeger.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:4317", tls = { insecure = true } }
           datadog = {
-            api = { key = var.datadog_api_key, site = "datadoghq.com" }
+            api = { key = var.datadog_api_key, site = var.datadog_site }
             metrics = { endpoint = "http://datadog.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:4318" }
           }
         }
@@ -270,7 +270,7 @@ resource "helm_release" "datadog_agent" {
 
   set {
     name  = "datadog.site"
-    value = "datadoghq.com"
+    value = var.datadog_site
   }
 
   set {

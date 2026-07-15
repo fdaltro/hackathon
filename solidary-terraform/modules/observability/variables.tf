@@ -10,6 +10,12 @@ variable "datadog_api_key" {
   sensitive   = true
 }
 
+variable "datadog_site" {
+  type        = string
+  description = "Site da organização Datadog (ex: us5.datadoghq.com)"
+  default     = "datadoghq.com"
+}
+
 # COMENTADO: PagerDuty não está em uso no momento.
 # variable "pagerduty_integration_key" {
 #   type        = string

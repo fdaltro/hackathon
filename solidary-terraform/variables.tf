@@ -28,6 +28,13 @@ variable "datadog_app_key" {
   type      = string
   sensitive = true
 }
+# Site da organização Datadog (ex: "datadoghq.com" para US1,
+# "us5.datadoghq.com" para US5, "datadoghq.eu" para EU1, etc.)
+# Confira em Organization Settings > "Site" no console da Datadog.
+variable "datadog_site" {
+  type    = string
+  default = "datadoghq.com"
+}
 # COMENTADO: PagerDuty não está em uso no momento
 # variable "pagerduty_integration_key" {
 #   type      = string

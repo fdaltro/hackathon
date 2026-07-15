@@ -78,6 +78,7 @@ module "argocd" {
 module "observability" {
   source          = "./modules/observability"
   datadog_api_key = var.datadog_api_key
+  datadog_site    = var.datadog_site
   depends_on      = [module.eks]
 }
 
