@@ -16,10 +16,11 @@ variable "datadog_site" {
   default     = "datadoghq.com"
 }
 
-# COMENTADO: PagerDuty não está em uso no momento.
-# variable "pagerduty_integration_key" {
-#   type        = string
-#   description = "Integration Key do PagerDuty para o Alertmanager (via TF_VAR_pagerduty_integration_key)"
-#   sensitive   = true
-#   default     = ""
-# }
+
+ variable "pagerduty_integration_key" {
+   type        = string
+   description = "Integration Key do PagerDuty para o Alertmanager (via TF_VAR_pagerduty_integration_key)"
+   sensitive   = true
+   default     = ""
+ }
+

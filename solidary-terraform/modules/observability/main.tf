@@ -21,7 +21,7 @@ resource "kubernetes_namespace" "monitoring" {
 }
 
 # ==========================================================
-# 2. PROMETHEUS (Sem Alertmanager nativo e sem discos)
+# 2. PROMETHEUS (Com Alertmanager e Integração PagerDuty)
 # ==========================================================
 resource "helm_release" "prometheus" {
   name       = "prometheus"
@@ -47,38 +47,79 @@ resource "helm_release" "prometheus" {
     value = "false"
   }
   set {
-    name  = "alertmanager.enabled"
+    name  = "pushgateway.persistentVolume.enabled"
     value = "false"
   }
   set {
     name  = "service.type"
     value = "LoadBalancer"
   }
+
+  # LIGANDO O ALERTMANAGER
   set {
-    name  = "pushgateway.persistentVolume.enabled"
+    name  = "alertmanager.enabled"
+    value = "true" 
+  }
+  set {
+    name  = "alertmanager.persistentVolume.enabled"
     value = "false"
   }
 
   values = [
     yamlencode({
+      # 1. REGRAS DO PROMETHEUS (O Detetive)
       serverFiles = {
         "alerting_rules.yml" = {
           groups = [
             {
-              name = "solidary-rules"
+              name = "slo-error-budget"
               rules = [
                 {
-                  alert = "AltaTaxaErrosHTTP4xx"
-                  expr  = "(sum(rate(http_server_duration_milliseconds_count{http_status_code=~\"4..\"}[5m])) by (job) / sum(rate(http_server_duration_milliseconds_count[5m])) by (job)) * 100 > 5"
-                  for   = "3m"
+                  alert = "SLOFastBurn"
+                  expr  = "sum(rate(http_server_duration_milliseconds_count{http_status_code=~\"5..\"}[1h])) / sum(rate(http_server_duration_milliseconds_count[1h])) > 0.0144"
+                  for   = "5m"
                   labels = {
                     severity = "critical"
                     team     = "sre-solidary"
                   }
                   annotations = {
-                    summary     = "Alta taxa de erros 4xx detectada no serviço: {{ $labels.job }}"
-                    description = "O microsserviço {{ $labels.job }} está com uma taxa de erros HTTP 4xx de {{ $value | printf \"%.2f\" }}% nos últimos 3 minutos, ultrapassando o limite seguro de 5%."
+                    summary     = "Fast Burn Rate detectado!"
+                    description = "O serviço está consumindo o Error Budget 14.4x mais rápido que o normal. Risco de esgotamento total em 2 dias."
                   }
+                }
+              ]
+            }
+          ]
+        }
+      }
+
+      # 2. ROTAS DO ALERTMANAGER (O Despachante)
+      alertmanagerFiles = {
+        "alertmanager.yml" = {
+          global = {
+            resolve_timeout = "5m"
+          }
+          route = {
+            group_by        = ["alertname", "job"]
+            group_wait      = "30s"
+            group_interval  = "5m"
+            repeat_interval = "12h"
+            receiver        = "pagerduty-critical"
+            routes = [
+              {
+                matchers = ["severity = critical"]
+                receiver = "pagerduty-critical"
+              }
+            ]
+          }
+          receivers = [
+            {
+              name = "pagerduty-critical"
+              pagerduty_configs = [
+                {
+                  routing_key = var.pagerduty_integration_key
+                  description = "{{ .CommonAnnotations.summary }} - {{ .CommonAnnotations.description }}"
+                  severity    = "critical"
                 }
               ]
             }
@@ -106,7 +147,7 @@ resource "helm_release" "loki" {
 }
 
 # ==========================================================
-# 4. GRAFANA (Sem discos e com Fontes Injetadas)
+# 4. GRAFANA (Sem discos e com Fontes/Dashboards Injetados)
 # ==========================================================
 resource "helm_release" "grafana" {
   name       = "grafana"
@@ -134,6 +175,67 @@ resource "helm_release" "grafana" {
             { name = "Loki", type = "loki", url = "http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100", access = "proxy" },
             { name = "Jaeger", type = "jaeger", url = "http://jaeger.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:16686", access = "proxy" }
           ]
+        }
+      }
+      dashboardProviders = {
+        "dashboardproviders.yaml" = {
+          apiVersion = 1
+          providers = [
+            {
+              name            = "default"
+              orgId           = 1
+              folder          = ""
+              type            = "file"
+              disableDeletion = false
+              editable        = true
+              options = {
+                path = "/var/lib/grafana/dashboards/default"
+              }
+            }
+          ]
+        }
+      }
+      dashboards = {
+        default = {
+          "slo-dashboard" = {
+            json = tostring(jsonencode({
+              title = "SLO & Error Budget - Donation Service"
+              refresh = "10s"
+              panels = [
+                {
+                  title = "SLO de Disponibilidade (Alvo: 99.9%)"
+                  type = "gauge"
+                  gridPos = { h = 8, w = 12, x = 0, y = 0 }
+                  targets = [ { expr = "sum(rate(http_server_duration_milliseconds_count{http_status_code!~\"5..\"}[$__range])) / sum(rate(http_server_duration_milliseconds_count[$__range])) * 100", refId = "A" } ]
+                  fieldConfig = { defaults = { min = 99.0, max = 100.0, unit = "percent", thresholds = { mode = "absolute", steps = [ { color = "red", value = null }, { color = "yellow", value = 99.5 }, { color = "green", value = 99.9 } ] } } }
+                },
+                {
+                  title = "Error Budget Consumido (Limite: 0.1% falhas)"
+                  type = "stat"
+                  gridPos = { h = 8, w = 12, x = 12, y = 0 }
+                  targets = [ { expr = "(sum(rate(http_server_duration_milliseconds_count{http_status_code=~\"5..\"}[$__range])) / sum(rate(http_server_duration_milliseconds_count[$__range]))) / 0.001 * 100", refId = "A" } ]
+                  fieldConfig = { defaults = { min = 0, max = 100, unit = "percent", thresholds = { mode = "absolute", steps = [ { color = "green", value = null }, { color = "yellow", value = 75 }, { color = "red", value = 100 } ] } } }
+                },
+                {
+                  title = "Burn Rate (Sucesso vs Falhas 5xx)"
+                  type = "timeseries"
+                  gridPos = { h = 8, w = 12, x = 0, y = 8 }
+                  targets = [ 
+                    { expr = "sum(rate(http_server_duration_milliseconds_count{http_status_code!~\"5..\"}[1m]))", legendFormat = "Sucesso", refId = "A" },
+                    { expr = "sum(rate(http_server_duration_milliseconds_count{http_status_code=~\"5..\"}[1m]))", legendFormat = "Falhas 5xx", refId = "B" }
+                  ]
+                  fieldConfig = { defaults = { color = { mode = "palette-classic" } }, overrides = [ { matcher = { id = "byNames", options = "Falhas 5xx" }, properties = [ { id = "color", value = { fixedColor = "red", mode = "fixed" } } ] } ] }
+                },
+                {
+                  title = "Latência P95 (Alvo: < 250ms)"
+                  type = "stat"
+                  gridPos = { h = 8, w = 12, x = 12, y = 8 }
+                  targets = [ { expr = "histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket[$__range])) by (le))", refId = "A" } ]
+                  fieldConfig = { defaults = { unit = "ms", thresholds = { mode = "absolute", steps = [ { color = "green", value = null }, { color = "yellow", value = 200 }, { color = "red", value = 250 } ] } } }
+                }
+              ]
+            }))
+          }
         }
       }
     })
