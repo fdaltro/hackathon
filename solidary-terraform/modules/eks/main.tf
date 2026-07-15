@@ -27,7 +27,7 @@ resource "aws_eks_node_group" "main" {
 
   # FinOps: Redução da escala para economizar créditos do Academy
   scaling_config {
-    desired_size = 2 # Reduzido de 3
+    desired_size = 3 # Reduzido de 3
     max_size     = 3 # Reduzido de 4
     min_size     = 1
   }
