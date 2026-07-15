@@ -2,6 +2,13 @@ variable "region" {
   default = "us-east-1"
 }
 
+# Região secundária para o bucket de backup do Velero - confirmado que
+# o AWS Academy libera us-west-2 nesta conta, então o backup pode ficar
+# de fato em uma região diferente da região do cluster.
+variable "dr_region" {
+  default = "us-west-2"
+}
+
 variable "project_name" {
   default = "solidary-tech"
 }

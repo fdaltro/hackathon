@@ -4,6 +4,11 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = ">= 1.14.0"
     }
+    aws = {
+      source                = "hashicorp/aws"
+      version               = "~> 5.0"
+      configuration_aliases = [aws.dr]
+    }
   }
 }
 
@@ -12,22 +17,20 @@ terraform {
 # Velero fazendo backup do estado do cluster (manifestos +
 # volumes) para um bucket S3 externo, independente do EKS.
 #
-# Nota: o AWS Academy restringe a criação de recursos a uma
-# única região (us-east-1), então o bucket fica na mesma região
-# do cluster. Ainda assim, o S3 é um serviço multi-AZ por
-# natureza - o bucket sobrevive à queda de uma ou mais AZs
-# específicas (o cenário de falha mais comum), só não a uma
-# queda da região inteira. Essa limitação fica documentada
-# conscientemente no PCN.
+# O bucket fica na região us-west-2 (aws.dr), diferente da região
+# do cluster (us-east-1) - confirmado disponível nesta conta do
+# AWS Academy. Isso garante que os manifestos do cluster sobrevivam
+# mesmo a uma queda completa da região principal.
 # ==========================================================
 
 data "aws_caller_identity" "current" {}
 
 # ==========================================================
 # 1. BUCKET S3 DEDICADO PARA OS BACKUPS DO VELERO
-# (separado do bucket do state do Terraform, de propósito)
+# Criado na região de DR (aws.dr), não na região do cluster.
 # ==========================================================
 resource "aws_s3_bucket" "velero_backups" {
+  provider      = aws.dr
   bucket        = "${var.project_name}-velero-backups-${data.aws_caller_identity.current.account_id}"
   force_destroy = true # Permite destruir mesmo com objetos dentro (ambiente de lab)
 
@@ -38,7 +41,8 @@ resource "aws_s3_bucket" "velero_backups" {
 
 # Versionamento protege contra sobrescrita acidental de backups
 resource "aws_s3_bucket_versioning" "velero_backups" {
-  bucket = aws_s3_bucket.velero_backups.id
+  provider = aws.dr
+  bucket   = aws_s3_bucket.velero_backups.id
   versioning_configuration {
     status = "Enabled"
   }
@@ -46,6 +50,7 @@ resource "aws_s3_bucket_versioning" "velero_backups" {
 
 # Bloqueia qualquer acesso público ao bucket de backup (boas práticas de segurança)
 resource "aws_s3_bucket_public_access_block" "velero_backups" {
+  provider                = aws.dr
   bucket                  = aws_s3_bucket.velero_backups.id
   block_public_acls       = true
   block_public_policy     = true
@@ -118,7 +123,8 @@ resource "helm_release" "velero" {
     value = "plugins"
   }
 
-  # Local de armazenamento dos backups (manifestos do cluster)
+  # Local de armazenamento dos backups (manifestos do cluster) -
+  # fica na região de DR, onde o bucket S3 realmente existe
   set {
     name  = "configuration.backupStorageLocation[0].name"
     value = "default"
@@ -133,10 +139,12 @@ resource "helm_release" "velero" {
   }
   set {
     name  = "configuration.backupStorageLocation[0].config.region"
-    value = var.region
+    value = var.dr_region
   }
 
-  # Local de snapshot dos volumes (EBS)
+  # Local de snapshot dos volumes (EBS) - precisa ficar na MESMA região
+  # do cluster/dos volumes (limitação física da AWS: não é possível
+  # originar um snapshot de EBS diretamente em outra região)
   set {
     name  = "configuration.volumeSnapshotLocation[0].name"
     value = "default"

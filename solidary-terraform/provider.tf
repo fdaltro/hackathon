@@ -44,6 +44,18 @@ provider "aws" {
   }
 }
 
+# Provider secundário para o bucket de backup do Velero, em uma região
+# diferente da região do cluster (DR cross-region real - confirmado
+# disponível nesta conta do AWS Academy).
+provider "aws" {
+  alias  = "dr"
+  region = var.dr_region
+
+  default_tags {
+    tags = var.default_tags
+  }
+}
+
 provider "kubernetes" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)

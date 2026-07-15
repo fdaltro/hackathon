@@ -89,8 +89,14 @@ module "velero" {
   source            = "./modules/velero"
   project_name      = var.project_name
   region            = var.region
+  dr_region         = var.dr_region
   aws_access_key    = var.aws_access_key
   aws_secret_key    = var.aws_secret_key
   aws_session_token = var.aws_session_token
   depends_on        = [module.eks]
+
+  providers = {
+    aws    = aws
+    aws.dr = aws.dr
+  }
 }

@@ -4,8 +4,8 @@ output "backup_bucket_name" {
 }
 
 output "backup_bucket_region" {
-  description = "Região do bucket de backup (mesma região do cluster - AWS Academy restringe multi-região)"
-  value       = var.region
+  description = "Região do bucket de backup - diferente da região do cluster (DR cross-region real)"
+  value       = var.dr_region
 }
 
 output "backup_schedule_name" {
