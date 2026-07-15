@@ -509,9 +509,9 @@ resource "helm_release" "datadog_agent" {
   }
 }
 # COMENTADO: Datadog não está em uso no momento
-# # ==========================================================
+# # ===========================================================
 # # 10. ALERTA INTELIGENTE (Monitorando donation-service)
-# # ==========================================================
+# # ===========================================================
 # resource "datadog_monitor" "donation_service_5xx_alert" {
 #   name    = "[SolidaryTech] Taxa de Erro HTTP 5xx Crítica - donation-service"
 #   type    = "query alert"
