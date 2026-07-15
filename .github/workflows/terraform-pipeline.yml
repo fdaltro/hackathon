@@ -87,12 +87,15 @@ jobs:
           retention-days: 1
 
       - name: Resumo do Plan
+        env:
+          # Salva o texto numa variável de ambiente segura
+          PLAN_OUTPUT: ${{ steps.plan.outputs.stdout }}
         run: |
           echo "### 📋 Terraform Plan" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          echo "$PLAN_OUTPUT" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.plan.outputs.stdout }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
+          
       - name: Falhar job se o Plan falhou
         if: steps.plan.outcome == 'failure'
         run: exit 1

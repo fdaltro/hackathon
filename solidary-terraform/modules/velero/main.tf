@@ -7,7 +7,7 @@ terraform {
   }
 }
 
-# ===========================================================
+# ==========================================================
 # Estratégia de DR (Opção A - Multicloud/Cross-Region Backup):
 # Velero fazendo backup do estado do cluster (manifestos +
 # volumes) para um bucket S3 externo, independente do EKS.
@@ -19,7 +19,7 @@ terraform {
 # específicas (o cenário de falha mais comum), só não a uma
 # queda da região inteira. Essa limitação fica documentada
 # conscientemente no PCN.
-# ===========================================================
+# ==========================================================
 
 data "aws_caller_identity" "current" {}
 
