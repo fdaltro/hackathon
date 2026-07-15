@@ -158,7 +158,7 @@ resource "helm_release" "velero" {
   }
   set {
     name  = "configuration.uploaderType"
-    value = "restic"
+    value = "kopia"
   }
 
   depends_on = [
