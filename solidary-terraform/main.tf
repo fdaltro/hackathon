@@ -1,5 +1,5 @@
-# ==========================================================
-# 1. REDE (JÁ PROVISIONADO)
+# ===========================================================
+# 1. REDE 
 # ==========================================================
 module "network" {
   source       = "./modules/vpc"
@@ -9,7 +9,7 @@ module "network" {
 }
 
 # ==========================================================
-# 2. BANCOS DE DADOS (JÁ PROVISIONADO)
+# 2. BANCOS DE DADOS 
 # ==========================================================
 module "database" {
   source          = "./modules/database"
@@ -20,7 +20,7 @@ module "database" {
 }
 
 # ==========================================================
-# 3. NOSQL VOLUNTÁRIOS (JÁ PROVISIONADO)
+# 3. NOSQL VOLUNTÁRIOS 
 # ==========================================================
 module "dynamodb" {
   source       = "./modules/dynamodb"
@@ -28,7 +28,7 @@ module "dynamodb" {
 }
 
 # ==========================================================
-# 4. MENSAGERIA SQS (JÁ PROVISIONADO)
+# 4. MENSAGERIA SQS 
 # ==========================================================
 module "sqs" {
   source       = "./modules/sqs"
