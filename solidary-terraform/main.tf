@@ -36,7 +36,7 @@ module "sqs" {
 }
 
 # ==========================================================
-# 5. REPOSITÓRIOS DE IMAGENS (JÁ PROVISIONADO)
+# 5. REPOSITÓRIOS DE IMAGENS
 # ==========================================================
 module "ecr" {
   source       = "./modules/ecr"
