@@ -77,7 +77,7 @@ resource "helm_release" "prometheus" {
               rules = [
                 {
                   alert = "SLOFastBurn"
-                  expr  = "sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\", http_response_status_code=~\"5..\"}[1h])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\"}[1h])) > 0.0144"
+                  expr  = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[1h])) / sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\"}[1h])) > 0.0144"
                   for   = "5m"
                   labels = {
                     severity = "critical"
@@ -90,7 +90,7 @@ resource "helm_release" "prometheus" {
                 },
                 {
                   alert = "SLOSlowBurn"
-                  expr  = "sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\", http_response_status_code=~\"5..\"}[6h])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\"}[6h])) > 0.006"
+                  expr  = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[6h])) / sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\"}[6h])) > 0.006"
                   for   = "15m"
                   labels = {
                     severity = "warning"
@@ -186,32 +186,39 @@ resource "helm_release" "grafana" {
                   title = "SLO de Disponibilidade (Alvo: 99.9% em 30d)"
                   type = "gauge"
                   gridPos = { h = 8, w = 12, x = 0, y = 0 }
-                  targets = [ { expr = "sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\", http_response_status_code!~\"5..\"}[30d])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\"}[30d])) * 100", refId = "A", instant = true } ]
+                  targets = [ { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code!~\"5..\"}[30d])) / sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\"}[30d])) * 100", refId = "A", instant = true } ]
                   fieldConfig = { defaults = { min = 99.0, max = 100.0, unit = "percent", thresholds = { mode = "absolute", steps = [ { color = "red", value = null }, { color = "yellow", value = 99.5 }, { color = "green", value = 99.9 } ] } } }
                 },
                 {
                   title = "Error Budget Consumido (Janela: 30d, Limite: 0.1% falhas)"
                   type = "stat"
                   gridPos = { h = 8, w = 12, x = 12, y = 0 }
-                  targets = [ { expr = "(sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\", http_response_status_code=~\"5..\"}[30d])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\"}[30d]))) / 0.001 * 100", refId = "A", instant = true } ]
+                  targets = [ { expr = "(sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[30d])) / sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\"}[30d]))) / 0.001 * 100", refId = "A", instant = true } ]
                   fieldConfig = { defaults = { min = 0, max = 100, unit = "percent", thresholds = { mode = "absolute", steps = [ { color = "green", value = null }, { color = "yellow", value = 75 }, { color = "red", value = 100 } ] } } }
                 },
                 {
                   title = "Burn Rate (Sucesso vs Falhas 5xx) - donation-service"
                   type = "timeseries"
-                  gridPos = { h = 8, w = 12, x = 0, y = 8 }
+                  gridPos = { h = 8, w = 8, x = 0, y = 8 }
                   targets = [ 
-                    { expr = "sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\", http_response_status_code!~\"5..\"}[1m]))", legendFormat = "Sucesso", refId = "A" },
-                    { expr = "sum(rate(http_server_request_duration_seconds_count{service_name=\"donation-service\", http_response_status_code=~\"5..\"}[1m]))", legendFormat = "Falhas 5xx", refId = "B" }
+                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code!~\"5..\"}[1m]))", legendFormat = "Sucesso", refId = "A" },
+                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[1m]))", legendFormat = "Falhas 5xx", refId = "B" }
                   ]
                   fieldConfig = { defaults = { color = { mode = "palette-classic" } }, overrides = [ { matcher = { id = "byNames", options = "Falhas 5xx" }, properties = [ { id = "color", value = { fixedColor = "red", mode = "fixed" } } ] } ] }
                 },
                 {
                   title = "Latência P95 (Alvo: < 250ms) - donation-service"
                   type = "stat"
-                  gridPos = { h = 8, w = 12, x = 12, y = 8 }
-                  targets = [ { expr = "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service_name=\"donation-service\"}[5m])) by (le)) * 1000", refId = "A", instant = true } ]
+                  gridPos = { h = 8, w = 8, x = 8, y = 8 }
+                  targets = [ { expr = "histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket{job=\"donation-service\"}[5m])) by (le))", refId = "A", instant = true } ]
                   fieldConfig = { defaults = { unit = "ms", thresholds = { mode = "absolute", steps = [ { color = "green", value = null }, { color = "yellow", value = 200 }, { color = "red", value = 250 } ] } } }
+                },
+                {
+                  title = "Saturação (Uso de CPU dos Pods)"
+                  type = "timeseries"
+                  gridPos = { h = 8, w = 8, x = 16, y = 8 }
+                  targets = [ { expr = "sum(rate(container_cpu_usage_seconds_total{namespace!=\"kube-system\", pod!=\"\"}[1m])) by (pod)", legendFormat = "{{pod}}", refId = "A" } ]
+                  fieldConfig = { defaults = { unit = "percentunit" } }
                 }
               ]
             }))
