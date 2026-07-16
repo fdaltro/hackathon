@@ -42,12 +42,11 @@ variable "datadog_site" {
   type    = string
   default = "datadoghq.com"
 }
-# COMENTADO: PagerDuty não está em uso no momento
-# variable "pagerduty_integration_key" {
-#   type      = string
-#   sensitive = true
-#   default   = ""
-# }
+variable "pagerduty_integration_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
 
 # --- Tags Globais para FinOps ---
 variable "default_tags" {
