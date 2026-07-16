@@ -155,8 +155,9 @@ jobs:
       # ==========================================================
       - name: Scan de segurança com Trivy (imagem)
         uses: aquasecurity/trivy-action@master
-        # --- ATENÇÃO AQUI: ignore-unfixed resolve o erro e continue-on-error previne a quebra!
         continue-on-error: true 
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Evita bloqueio de rede no banco do Trivy
         with:
           image-ref: "${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ needs.set-version.outputs.version }}"
           format: "sarif"
@@ -166,12 +167,12 @@ jobs:
           ignore-unfixed: true
 
       - name: Publicar resultado do Trivy no GitHub Security
-        uses: github/codeql-action/upload-sarif@v4 # <--- ATUALIZADO PARA v4 para não aparecer mais os alertas
-        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true # Garante que a ausência do arquivo não quebre o push da imagem
         with:
           sarif_file: "trivy-results-${{ matrix.service }}.sarif"
           category: "trivy-${{ matrix.service }}"
-
+          
       # ==========================================================
       # Push só acontece em push para main (não em Pull Requests)
       # ==========================================================
