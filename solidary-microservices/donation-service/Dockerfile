@@ -1,4 +1,4 @@
-# --- Stage 1: Build da aplicação ---
+# --- Stage 1: Build da aplicação ----
 FROM golang:1.21-alpine AS builder
 
 # Instala certificados SSL e ferramentas básicas de compilação
