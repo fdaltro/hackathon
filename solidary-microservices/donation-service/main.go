@@ -17,8 +17,10 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -39,23 +41,38 @@ type App struct {
 	SqsQueueURL string
 }
 
-// initTracer configura o SDK do OpenTelemetry lendo as variáveis padrão
-// OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_SERVICE_NAME injetadas no Deployment.
-// Retorna uma função de shutdown que deve ser chamada ao encerrar a aplicação.
-func initTracer() func(context.Context) error {
-	ctx := context.Background()
+// buildResource monta o Resource compartilhado (nome/versão do serviço)
+// usado tanto pelo TracerProvider quanto pelo MeterProvider - garante
+// que traces e métricas fiquem correlacionados sob o mesmo service_name.
+func buildResource(ctx context.Context, serviceName string) *resource.Resource {
+	res, _ := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceName(serviceName),
+			semconv.ServiceVersion("1.0.0"),
+		),
+	)
+	return res
+}
 
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+func resolveEndpointAndService() (endpoint string, serviceName string) {
+	endpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
 		endpoint = "otel-collector.observabilidade.svc.cluster.local:4317"
 	}
-	// O exporter espera host:porta, sem o esquema http://
 	endpoint = trimScheme(endpoint)
 
-	serviceName := os.Getenv("OTEL_SERVICE_NAME")
+	serviceName = os.Getenv("OTEL_SERVICE_NAME")
 	if serviceName == "" {
 		serviceName = "donation-service"
 	}
+	return
+}
+
+// initTracer configura o SDK de TRACING do OpenTelemetry.
+// Retorna uma função de shutdown que deve ser chamada ao encerrar a aplicação.
+func initTracer() func(context.Context) error {
+	ctx := context.Background()
+	endpoint, serviceName := resolveEndpointAndService()
 
 	exporter, err := otlptracegrpc.New(
 		ctx,
@@ -63,16 +80,11 @@ func initTracer() func(context.Context) error {
 		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {
-		log.Printf("AVISO: não foi possível iniciar o exporter OTLP (%v). Tracing desativado.", err)
+		log.Printf("AVISO: não foi possível iniciar o exporter de traces OTLP (%v). Tracing desativado.", err)
 		return func(context.Context) error { return nil }
 	}
 
-	res, _ := resource.New(ctx,
-		resource.WithAttributes(
-			semconv.ServiceName(serviceName),
-			semconv.ServiceVersion("1.0.0"),
-		),
-	)
+	res := buildResource(ctx, serviceName)
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
@@ -87,6 +99,38 @@ func initTracer() func(context.Context) error {
 
 	log.Printf("OpenTelemetry tracing ativado - exportando para %s", endpoint)
 	return tp.Shutdown
+}
+
+// initMeter configura o SDK de MÉTRICAS do OpenTelemetry.
+// Sem isso, o otelhttp.NewHandler usa um MeterProvider "no-op" e NENHUMA
+// métrica HTTP (latência, contagem de requisições) é gerada - é exatamente
+// isso que faltava para o dashboard de SLO/Error Budget funcionar de
+// verdade com dados do donation-service.
+func initMeter() func(context.Context) error {
+	ctx := context.Background()
+	endpoint, serviceName := resolveEndpointAndService()
+
+	metricExporter, err := otlpmetricgrpc.New(
+		ctx,
+		otlpmetricgrpc.WithEndpoint(endpoint),
+		otlpmetricgrpc.WithInsecure(),
+	)
+	if err != nil {
+		log.Printf("AVISO: não foi possível iniciar o exporter de métricas OTLP (%v). Métricas desativadas.", err)
+		return func(context.Context) error { return nil }
+	}
+
+	res := buildResource(ctx, serviceName)
+
+	mp := metric.NewMeterProvider(
+		metric.WithReader(metric.NewPeriodicReader(metricExporter)),
+		metric.WithResource(res),
+	)
+
+	otel.SetMeterProvider(mp)
+
+	log.Printf("OpenTelemetry metrics ativado - exportando para %s", endpoint)
+	return mp.Shutdown
 }
 
 func trimScheme(endpoint string) string {
@@ -105,13 +149,17 @@ func trimPrefix(s, prefix string) string {
 func main() {
 	_ = godotenv.Load()
 
-	// --- Inicialização do OpenTelemetry ---
-	shutdown := initTracer()
+	// --- Inicialização do OpenTelemetry (Traces + Métricas) ---
+	shutdownTracer := initTracer()
+	shutdownMeter := initMeter()
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := shutdown(ctx); err != nil {
+		if err := shutdownTracer(ctx); err != nil {
 			log.Printf("Erro ao encerrar o exporter de tracing: %v", err)
+		}
+		if err := shutdownMeter(ctx); err != nil {
+			log.Printf("Erro ao encerrar o exporter de métricas: %v", err)
 		}
 	}()
 
@@ -146,8 +194,9 @@ func main() {
 	mux.HandleFunc("/health", app.HealthHandler)
 	mux.HandleFunc("/donations", app.DonationHandler)
 
-	// Envolve todas as rotas com o middleware de tracing do OpenTelemetry -
-	// cada requisição HTTP vira um span automaticamente (Distributed Tracing)
+	// Envolve todas as rotas com o middleware de tracing + métricas do
+	// OpenTelemetry - cada requisição HTTP vira um span E alimenta as
+	// métricas http.server.* automaticamente (Golden Metrics para SRE).
 	handler := otelhttp.NewHandler(mux, "donation-service")
 
 	log.Printf("donation-service rodando na porta %s", port)
