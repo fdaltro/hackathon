@@ -144,6 +144,10 @@ resource "helm_release" "grafana" {
     name  = "adminPassword"
     value = "admin123"
   }
+  set {
+    name  = "service.type"
+    value = "LoadBalancer"
+  }
 
   values = [
     yamlencode({
@@ -193,7 +197,7 @@ resource "helm_release" "grafana" {
                   title = "Error Budget Consumido (Janela: 30d, Limite: 0.1% falhas)"
                   type = "stat"
                   gridPos = { h = 8, w = 12, x = 12, y = 0 }
-                  targets = [ { expr = "(sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[30d])) / sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\"}[30d]))) / 0.001 * 100", refId = "A", instant = true } ]
+                  targets = [ { expr = "((sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[30d])) or vector(0)) / sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\"}[30d]))) / 0.001 * 100", refId = "A", instant = true } ]
                   fieldConfig = { defaults = { min = 0, max = 100, unit = "percent", thresholds = { mode = "absolute", steps = [ { color = "green", value = null }, { color = "yellow", value = 75 }, { color = "red", value = 100 } ] } } }
                 },
                 {
@@ -201,8 +205,8 @@ resource "helm_release" "grafana" {
                   type = "timeseries"
                   gridPos = { h = 8, w = 8, x = 0, y = 8 }
                   targets = [ 
-                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code!~\"5..\"}[1m]))", legendFormat = "Sucesso", refId = "A" },
-                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[1m]))", legendFormat = "Falhas 5xx", refId = "B" }
+                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code!~\"5..\"}[1m])) or vector(0)", legendFormat = "Sucesso", refId = "A" },
+                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[1m])) or vector(0)", legendFormat = "Falhas 5xx", refId = "B" }
                   ]
                   fieldConfig = { defaults = { color = { mode = "palette-classic" } }, overrides = [ { matcher = { id = "byNames", options = "Falhas 5xx" }, properties = [ { id = "color", value = { fixedColor = "red", mode = "fixed" } } ] } ] }
                 },
@@ -217,7 +221,7 @@ resource "helm_release" "grafana" {
                   title = "Saturação (Uso de CPU dos Pods)"
                   type = "timeseries"
                   gridPos = { h = 8, w = 8, x = 16, y = 8 }
-                  targets = [ { expr = "sum(rate(container_cpu_usage_seconds_total{namespace!=\"kube-system\", pod!=\"\"}[1m])) by (pod)", legendFormat = "{{pod}}", refId = "A" } ]
+                  targets = [ { expr = "sum(rate(container_cpu_usage_seconds_total{namespace=\"solidary\", pod!=\"\"}[1m])) by (pod)", legendFormat = "{{pod}}", refId = "A" } ]
                   fieldConfig = { defaults = { unit = "percentunit" } }
                 }
               ]
