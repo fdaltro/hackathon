@@ -361,9 +361,9 @@ resource "kubernetes_service" "alertmanager_manual_svc" {
 }
 
 
-# ==========================================================
+# ===========================================================
 # 6. JAEGER (Backend de Traces - Em Memória)
-# ==========================================================
+# ===========================================================
 resource "helm_release" "jaeger" {
   name       = "jaeger"
   repository = "https://jaegertracing.github.io/helm-charts"
