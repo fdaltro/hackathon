@@ -205,8 +205,8 @@ resource "helm_release" "grafana" {
                   type = "timeseries"
                   gridPos = { h = 8, w = 8, x = 0, y = 8 }
                   targets = [ 
-                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code!~\"5..\"}[1m])) or vector(0)", legendFormat = "Sucesso", refId = "A" },
-                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[1m])) or vector(0)", legendFormat = "Falhas 5xx", refId = "B" }
+                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code!~\"5..\"}[5m])) or vector(0)", legendFormat = "Sucesso", refId = "A" },
+                    { expr = "sum(rate(http_server_duration_milliseconds_count{job=\"donation-service\", http_status_code=~\"5..\"}[5m])) or vector(0)", legendFormat = "Falhas 5xx", refId = "B" }
                   ]
                   fieldConfig = { defaults = { color = { mode = "palette-classic" } }, overrides = [ { matcher = { id = "byNames", options = "Falhas 5xx" }, properties = [ { id = "color", value = { fixedColor = "red", mode = "fixed" } } ] } ] }
                 },
