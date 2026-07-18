@@ -44,7 +44,7 @@ module "ecr" {
 }
 
 # ==========================================================
-# 🚀 DESCOMENTADO: NÚCLEO COMPUTACIONAL E CONFIGURAÇÕES
+# 🚀 NÚCLEO COMPUTACIONAL E CONFIGURAÇÕES
 # ==========================================================
 module "eks" {
   source       = "./modules/eks"
@@ -100,4 +100,13 @@ module "velero" {
     aws    = aws
     aws.dr = aws.dr
   }
+}
+
+# ==========================================================
+# 💰 FINOPS: KUBECOST (Visibilidade de Custos + Forecast)
+# ==========================================================
+module "kubecost" {
+  source       = "./modules/kubecost"
+  cluster_name = var.cluster_name
+  depends_on   = [module.eks]
 }
