@@ -21,8 +21,9 @@ resource "kubernetes_namespace" "kubecost" {
 
 resource "helm_release" "kubecost" {
   name       = "kubecost"
-  repository = "oci://public.ecr.aws/kubecost/cost-analyzer"
+  repository = "oci://public.ecr.aws/kubecost"
   chart      = "cost-analyzer"
+  version    = "2.3.0"
   namespace  = kubernetes_namespace.kubecost.metadata[0].name
   timeout    = 600
 
