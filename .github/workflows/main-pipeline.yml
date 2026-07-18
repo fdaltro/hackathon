@@ -17,7 +17,6 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  # Precisa bater exatamente com o nome gerado pelo módulo Terraform:
   # name = "${var.project_name}-${each.value}" -> "solidary-tech-<service>"
   PROJECT_NAME: solidary-tech
 

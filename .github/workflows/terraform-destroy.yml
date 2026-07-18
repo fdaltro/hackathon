@@ -15,8 +15,7 @@ jobs:
       TF_VAR_region: ${{ secrets.AWS_REGION }}
       TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
       TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
-
-    # ADIÇÃO IMPORTANTE: Define a pasta padrão para todos os comandos "run"
+    
     defaults:
       run:
         working-directory: ./solidary-terraform

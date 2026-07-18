@@ -519,7 +519,7 @@ resource "helm_release" "datadog_agent" {
     value = "false"
   }
 }
-# COMENTADO: Datadog não está em uso no momento
+# Alertas e Dashboards dp Datadog não está em uso no momento
 # # ===========================================================
 # # 10. ALERTA INTELIGENTE (Monitorando donation-service)
 # # ===========================================================

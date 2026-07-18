@@ -69,8 +69,7 @@ resource "kubernetes_namespace" "velero" {
 
 # ==========================================================
 # 3. CREDENCIAIS AWS PARA O VELERO AUTENTICAR NO S3/EBS
-# (formato de arquivo de credenciais que o plugin AWS espera)
-# ==========================================================
+# # ==========================================================
 resource "kubernetes_secret" "velero_credentials" {
   metadata {
     name      = "cloud-credentials"
