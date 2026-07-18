@@ -17,8 +17,11 @@ on:
   workflow_dispatch: {} # Permite rodar manualmente pela aba Actions
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ${{ vars.AWS_REGION }}
   TF_WORKING_DIR: solidary-terraform
+  # -----------------------------------------------------------
+  # Credenciais do AWS Academy (Access Key/Secret/Session)
+  # -----------------------------------------------------------
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
@@ -28,9 +31,15 @@ env:
   TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
   TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   TF_VAR_aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
+  # Propaga a região do repositório (Settings > Secrets and variables >
+  # Actions > aba Variables) pro var.region do Terraform - assim a região
+  # fica centralizada num único lugar no GitHub.
+  TF_VAR_region: ${{ vars.AWS_REGION }}
   TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
   TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
-  TF_VAR_pagerduty_integration_key: ${{ secrets.TF_VAR_PAGERDUTY_INTEGRATION_KEY }}
+  TF_VAR_pagerduty_integration_key: ${{ secrets.PAGERDUTY_INTEGRATION_KEY }}
+  # Site da organização Datadog - confira em Organization Settings > "Site"
+  # no console da Datadog (não é segredo, pode ficar direto aqui)
   TF_VAR_datadog_site: "us5.datadoghq.com"
 
 jobs:
@@ -108,7 +117,6 @@ jobs:
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
-    
     # environment: production
 
     steps:

@@ -16,7 +16,8 @@ on:
   workflow_dispatch: {} # Permite rodar manualmente pela aba Actions
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  # Precisa bater exatamente com o nome gerado pelo módulo Terraform:
   # name = "${var.project_name}-${each.value}" -> "solidary-tech-<service>"
   PROJECT_NAME: solidary-tech
 
@@ -154,24 +155,20 @@ jobs:
       # ==========================================================
       - name: Scan de segurança com Trivy (imagem)
         uses: aquasecurity/trivy-action@master
-        continue-on-error: true 
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Evita bloqueio de rede no banco do Trivy
         with:
           image-ref: "${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ needs.set-version.outputs.version }}"
           format: "sarif"
           output: "trivy-results-${{ matrix.service }}.sarif"
           severity: "CRITICAL,HIGH"
-          exit-code: "0" 
-          ignore-unfixed: true
+          exit-code: "0" # Troque para "1" se quiser que vulnerabilidades CRÍTICAS bloqueiem o build
 
       - name: Publicar resultado do Trivy no GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
-        continue-on-error: true # Garante que a ausência do arquivo não quebre o push da imagem
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: "trivy-results-${{ matrix.service }}.sarif"
           category: "trivy-${{ matrix.service }}"
-          
+
       # ==========================================================
       # Push só acontece em push para main (não em Pull Requests)
       # ==========================================================

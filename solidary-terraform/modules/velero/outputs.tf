@@ -22,3 +22,22 @@ output "how_to_restore" {
   description = "Comando para restaurar a partir do backup mais recente (simular Disaster Recovery)"
   value       = "velero restore create --from-backup <NOME_DO_BACKUP>"
 }
+
+output "dr_terraform_state_bucket" {
+  description = "Bucket em Oregon (us-west-2) já preparado pra hospedar o Terraform state num failover real"
+  value       = aws_s3_bucket.dr_terraform_state.bucket
+}
+
+output "how_to_failover" {
+  description = "Procedimento para reconstruir a infraestrutura em Oregon durante um DR real"
+  value       = <<-EOT
+    1) terraform init -reconfigure \
+         -backend-config="bucket=${aws_s3_bucket.dr_terraform_state.bucket}" \
+         -backend-config="key=dr/terraform.tfstate" \
+         -backend-config="region=us-west-2"
+    2) terraform apply -var="region=us-west-2"
+    3) aws eks update-kubeconfig --region us-west-2 --name solidary-eks
+    4) velero backup get
+    5) velero restore create --from-backup <NOME_DO_BACKUP_MAIS_RECENTE>
+  EOT
+}

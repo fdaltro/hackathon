@@ -59,6 +59,53 @@ resource "aws_s3_bucket_public_access_block" "velero_backups" {
 }
 
 # ==========================================================
+# 1.1 BUCKET DEDICADO PARA O TERRAFORM STATE DE DR
+#
+# O backend "s3" principal (provider.tf) fica preso em us-east-1
+# de propósito - blocos de backend do Terraform não aceitam
+# variáveis, então não dá pra apontar dinamicamente pra outra
+# região no mesmo arquivo. Se us-east-1 cair de verdade, você
+# não conseguiria nem CRIAR um bucket novo lá pra guardar o
+# state de recuperação.
+#
+# Por isso, esse bucket já é criado com antecedência em Oregon
+# (aws.dr) - pronto pra ser usado como backend alternativo no
+# momento real de um failover, via:
+#
+#   terraform init -reconfigure \
+#     -backend-config="bucket=<nome deste bucket>" \
+#     -backend-config="key=dr/terraform.tfstate" \
+#     -backend-config="region=us-west-2"
+#   terraform apply -var="region=us-west-2"
+# ==========================================================
+resource "aws_s3_bucket" "dr_terraform_state" {
+  provider      = aws.dr
+  bucket        = "${var.project_name}-tfstate-dr-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true # Ambiente de lab - facilita destruir/recriar em testes
+
+  tags = {
+    Name = "${var.project_name}-tfstate-dr"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "dr_terraform_state" {
+  provider = aws.dr
+  bucket   = aws_s3_bucket.dr_terraform_state.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "dr_terraform_state" {
+  provider                = aws.dr
+  bucket                  = aws_s3_bucket.dr_terraform_state.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# ==========================================================
 # 2. NAMESPACE DEDICADO
 # ==========================================================
 resource "kubernetes_namespace" "velero" {
@@ -69,7 +116,8 @@ resource "kubernetes_namespace" "velero" {
 
 # ==========================================================
 # 3. CREDENCIAIS AWS PARA O VELERO AUTENTICAR NO S3/EBS
-# # ==========================================================
+# (formato de arquivo de credenciais que o plugin AWS espera)
+# ==========================================================
 resource "kubernetes_secret" "velero_credentials" {
   metadata {
     name      = "cloud-credentials"
