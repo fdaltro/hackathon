@@ -1,16 +1,5 @@
 # ==========================================================
 # KUBECOST - Visibilidade de Custos e Rightsizing (FinOps)
-#
-# Usa a distribuição oficial mantida em parceria entre AWS e
-# Kubecost (public.ecr.aws/kubecost/cost-analyzer), disponível
-# gratuitamente para clusters EKS sem precisar de token de
-# cadastro no site da Kubecost (diferente do chart da comunidade
-# em kubecost.github.io, que exige um kubecostToken).
-#
-# Isso resolve diretamente a limitação do AWS Academy de não ter
-# o Cost Explorer completo liberado - o Kubecost calcula os
-# custos por namespace/pod/label direto de dentro do cluster,
-# usando a tabela de preços pública da AWS.
 # ==========================================================
 
 resource "kubernetes_namespace" "kubecost" {
@@ -33,33 +22,39 @@ resource "helm_release" "kubecost" {
   }
 
   # ---------------------------------------------------------
-  # FinOps: sem PVC, seguindo a mesma política já usada no
-  # resto do projeto (Prometheus/Loki também rodam sem disco).
-  # O Kubecost vem com seu próprio Prometheus dedicado por
-  # padrão (recomendado pela própria Kubecost, evita conflito
-  # de scrape config com o Prometheus geral de observabilidade).
+  # FinOps: Configurações para rodar sem persistência (Storage)
   # ---------------------------------------------------------
+  
+  # Desabilita PVC do Kubecost (evita erro de Unbound PersistentVolumeClaim)
+  set {
+    name  = "persistentVolume.enabled"
+    value = "false"
+  }
+
+  # Desabilita PVC do Prometheus embutido
   set {
     name  = "prometheus.server.persistentVolume.enabled"
     value = "false"
   }
+  
+  # Habilita emptyDir para permitir o armazenamento efêmero
+  set {
+    name  = "prometheus.server.emptyDir.enabled"
+    value = "true"
+  }
+
   set {
     name  = "prometheus.alertmanager.persistentVolume.enabled"
     value = "false"
   }
-  set {
-    name  = "prometheus.server.persistentVolume.size"
-    value = "2Gi"
-  }
 
-  # Retenção reduzida - ambiente de lab não precisa dos 15 dias
-  # padrão, e isso reduz o consumo de memória/CPU no cluster.
+  # Retenção reduzida para poupar memória/CPU
   set {
     name  = "prometheus.server.retention"
     value = "3d"
   }
 
-  # Recursos enxutos - cluster do AWS Academy tem capacidade limitada
+  # Recursos enxutos para o AWS Academy
   set {
     name  = "kubecostModel.resources.requests.cpu"
     value = "100m"
@@ -67,5 +62,11 @@ resource "helm_release" "kubecost" {
   set {
     name  = "kubecostModel.resources.requests.memory"
     value = "256Mi"
+  }
+  
+  # Garante que o Prometheus global esteja habilitado
+  set {
+    name  = "global.prometheus.enabled"
+    value = "true"
   }
 }
