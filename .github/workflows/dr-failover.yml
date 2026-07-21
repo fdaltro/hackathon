@@ -74,7 +74,7 @@ jobs:
         aws_session_token=${{ secrets.AWS_SESSION_TOKEN }}
         EOF
 
-    # 9. Instala o core do operador do Velero apontando para o bucket estático de backups criado via CLI
+    # 9. Inicializa o core do operador do Velero apontando para o bucket existente de backups
     - name: 5. Inicializar Operador do Velero no Novo Cluster
       run: |
         velero install \
@@ -83,7 +83,6 @@ jobs:
           --bucket solidary-tech-velero-backups-158176292469 \
           --secret-file ./credentials-velero \
           --backup-location-config region=us-west-2 \
-          --snapshot-location-config region=us-west-2 \
           --use-volume-snapshots=false
 
     # 10. Aguarda sincronização e lista o histórico completo de backups no log para auditoria da banca
