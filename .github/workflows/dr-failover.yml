@@ -55,6 +55,8 @@ jobs:
         TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         TF_VAR_aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
         TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
+        TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
+        TF_VAR_pagerduty_integration_key: ${{ secrets.PAGERDUTY_INTEGRATION_KEY }}
 
     # 7. Conecta o kubectl do runner ao novo cluster EKS recém-criado
     - name: 3. Atualizar Kubeconfig do Novo Cluster
