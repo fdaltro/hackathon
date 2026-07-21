@@ -177,3 +177,37 @@ jobs:
           echo "🚀 Iniciando restauração automatizada..."
           velero restore create --from-backup $LATEST_BACKUP --wait
           echo "🎉 Failover, Build de Imagens e Restauração concluídos com sucesso em Oregon!"
+
+  # ==========================================================
+  # JOB 4: Atualiza os Deployments em Oregon com a tag recém-gerada
+  # ==========================================================
+  update-cluster-images:
+    name: "4. Atualizar Imagens no Cluster de DR"
+    needs: [build-and-push-dr, restore-cluster]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configurar Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-west-2
+
+      - name: Atualizar Kubeconfig do Cluster em Oregon
+        run: |
+          aws eks update-kubeconfig --region us-west-2 --name solidary-eks
+
+      - name: Atualizar deployments para usar o ECR e a tag corretos em us-west-2
+        run: |
+          VERSION="${{ needs.set-version.outputs.version }}"
+          REGISTRY="158176292469.dkr.ecr.us-west-2.amazonaws.com"
+          
+          echo "Atualizando deployments para a versão $VERSION..."
+          
+          kubectl set image deployment/donation-service donation-service=${REGISTRY}/solidary-tech-donation-service:${VERSION} -n solidary
+          kubectl set image deployment/ngo-service ngo-service=${REGISTRY}/solidary-tech-ngo-service:${VERSION} -n solidary
+          kubectl set image deployment/volunteer-service volunteer-service=${REGISTRY}/solidary-tech-volunteer-service:${VERSION} -n solidary
+          
+          echo "🎉 Todos os deployments foram apontados para o ECR de Oregon com sucesso!"      
