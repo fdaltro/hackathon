@@ -50,6 +50,10 @@ jobs:
       working-directory: solidary-terraform
       run: |
         terraform apply -var="region=us-west-2" -auto-approve
+      env:
+        TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
 
     # 7. Conecta o kubectl do runner ao novo cluster EKS recém-criado
     - name: 3. Atualizar Kubeconfig do Novo Cluster
