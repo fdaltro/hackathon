@@ -1,0 +1,45 @@
+name: "🚨 DR - Destruir Infraestrutura de Oregon (Rollback/Cleanup)"
+
+on:
+  workflow_dispatch: # Botão de clique único no GitHub Actions
+
+jobs:
+  destroy-dr:
+    name: "Executar Terraform Destroy em us-west-2"
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Baixa o código do repositório para o runner
+    - name: Checkout do Código
+      uses: actions/checkout@v4
+
+    # 2. Configura as credenciais da AWS utilizando os Secrets do GitHub
+    - name: Configurar Credenciais AWS
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+        aws-region: us-west-2
+
+    # 3. Instala o Terraform no Runner
+    - name: Instalar Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.5.7"
+
+    # 4. Reconfigura o backend do Terraform apontando para o bucket de state em Oregon
+    - name: Reconfigurar Backend do Terraform para Região de DR
+      working-directory: solidary-terraform
+      run: |
+        terraform init -reconfigure \
+          -backend-config="bucket=solidary-tech-tfstate-dr-158176292469" \
+          -backend-config="key=dr/terraform.tfstate" \
+          -backend-config="region=us-west-2"
+
+    # 5. Executa o destroy automatizado da infraestrutura em us-west-2
+    - name: Executar Terraform Destroy
+      working-directory: solidary-terraform
+      run: |
+        terraform destroy -var="region=us-west-2" -auto-approve
+        echo "🧹 Infraestrutura de DR em Oregon destruída com sucesso. Os buckets S3 permanecem intactos."
