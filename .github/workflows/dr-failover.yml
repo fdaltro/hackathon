@@ -1,109 +1,179 @@
 name: "🚨 DR - Failover Regional Automático (Oregon)"
 
 on:
-  # Botão limpo: clique único, sem inputs manuais obrigatórios
-  workflow_dispatch:
+  workflow_dispatch: {} # Botão de clique único no GitHub Actions
+
+env:
+  DR_REGION: us-west-2
+  PROJECT_NAME: solidary-tech
 
 jobs:
-  failover:
-    name: "Executar Failover para us-west-2"
+  # ==========================================================
+  # JOB 0: Define a versão padrão usada no build das imagens
+  # ==========================================================
+  set-version:
+    name: Definir versão
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set.outputs.version }}
+    steps:
+      - id: set
+        run: echo "version=v1.0.0-$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+  # ==========================================================
+  # JOB 1: Reprovisiona a Infraestrutura com Terraform em Oregon
+  # ==========================================================
+  failover-infra:
+    name: "1. Reprovisionar Infraestrutura em Oregon"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.DR_REGION }}
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Reconfigurar Backend do Terraform para Região de DR
+        working-directory: solidary-terraform
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=solidary-tech-tfstate-dr-158176292469" \
+            -backend-config="key=dr/terraform.tfstate" \
+            -backend-config="region=us-west-2"
+
+      - name: Executar Terraform Apply
+        working-directory: solidary-terraform
+        run: |
+          terraform apply -var="region=us-west-2" -auto-approve
+        env:
+          TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_VAR_aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
+          TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
+          TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
+          TF_VAR_datadog_site: "us5.datadoghq.com"
+          TF_VAR_pagerduty_integration_key: ${{ secrets.PAGERDUTY_INTEGRATION_KEY }}
+
+  # ==========================================================
+  # JOB 2: Build e Push das Imagens para o ECR de Oregon (us-west-2)
+  # ==========================================================
+  build-and-push-dr:
+    name: "2. Build & Push para ECR (us-west-2) - ${{ matrix.service }}"
+    needs: [set-version, failover-infra]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ngo-service, donation-service, volunteer-service]
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS (Oregon)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.DR_REGION }}
+
+      - name: Login no Amazon ECR (us-west-2)
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build da imagem Docker
+        working-directory: solidary-microservices/${{ matrix.service }}
+        run: |
+          docker build \
+            -t ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ needs.set-version.outputs.version }} \
+            .
+
+      - name: Push da imagem para o ECR de Oregon
+        working-directory: solidary-microservices/${{ matrix.service }}
+        run: |
+          docker push ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ needs.set-version.outputs.version }}
+
+  # ==========================================================
+  # JOB 3: Configuração do Cluster, Velero e Restauração
+  # ==========================================================
+  restore-cluster:
+    name: "3. Restaurar Cluster e Aplicação via Velero"
+    needs: [build-and-push-dr]
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Baixa o código do repositório para o runner
-    - name: Checkout do Código
-      uses: actions/checkout@v4
+      - name: Checkout do Código
+        uses: actions/checkout@v4
 
-    # 2. Configura as credenciais da AWS utilizando os Secrets do GitHub
-    - name: Configurar Credenciais AWS
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-        aws-region: us-west-2
+      - name: Configurar Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.DR_REGION }}
 
-    # 3. Instala o Terraform no Runner
-    - name: Instalar Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: "1.5.7"
+      - name: Instalar Velero CLI
+        run: |
+          curl -L https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz | tar xz
+          sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
+          velero version --client-only
 
-    # 4. Instala a CLI do Velero no Runner
-    - name: Instalar Velero CLI
-      run: |
-        curl -L https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz | tar xz
-        sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
-        velero version --client-only
+      - name: Atualizar Kubeconfig do Novo Cluster em Oregon
+        run: |
+          aws eks update-kubeconfig --region us-west-2 --name solidary-eks
 
-    # 5. Reconfigura o backend do Terraform apontando diretamente para o bucket estático de DR
-    - name: 1. Reconfigurar Backend do Terraform para Região de DR
-      working-directory: solidary-terraform
-      run: |
-        terraform init -reconfigure \
-          -backend-config="bucket=solidary-tech-tfstate-dr-158176292469" \
-          -backend-config="key=dr/terraform.tfstate" \
-          -backend-config="region=us-west-2"
+      - name: Aguardar nós do EKS ficarem Ready
+        run: |
+          echo "Aguardando os nós do cluster EKS iniciarem..."
+          kubectl wait --for=condition=Ready nodes --all --timeout=300s || true
 
-    # 6. Levanta toda a infraestrutura espelho (VPC, RDS, EKS) em Oregon
-    - name: 2. Reprovisionar Infraestrutura em Oregon (us-west-2)
-      working-directory: solidary-terraform
-      run: |
-        terraform apply -var="region=us-west-2" -auto-approve
-      env:
-        TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        TF_VAR_aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
-        TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
-        TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
-        TF_VAR_pagerduty_integration_key: ${{ secrets.PAGERDUTY_INTEGRATION_KEY }}
-        TF_VAR_datadog_site: "us5.datadoghq.com"
+      - name: Preparar Credenciais do Velero
+        run: |
+          cat <<EOF > ./credentials-velero
+          [default]
+          aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_session_token=${{ secrets.AWS_SESSION_TOKEN }}
+          EOF
 
-    # 7. Conecta o kubectl do runner ao novo cluster EKS recém-criado
-    - name: 3. Atualizar Kubeconfig do Novo Cluster
-      run: |
-        aws eks update-kubeconfig --region us-west-2 --name solidary-eks
+      - name: Inicializar Operador do Velero no Novo Cluster
+        run: |
+          velero install \
+            --provider aws \
+            --plugins velero/velero-plugin-for-aws:v1.10.0 \
+            --bucket solidary-tech-velero-backups-158176292469 \
+            --secret-file ./credentials-velero \
+            --backup-location-config region=us-west-2 \
+            --use-volume-snapshots=false
 
-    # 8. Cria o arquivo temporário de credenciais para o Core do Velero
-    - name: 4. Preparar Credenciais do Velero
-      run: |
-        cat <<EOF > ./credentials-velero
-        [default]
-        aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws_secret_access_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws_session_token=${{ secrets.AWS_SESSION_TOKEN }}
-        EOF
+      - name: Sincronizar e Listar Backups Disponíveis no Bucket
+        run: |
+          echo "Aguardando 30 segundos para o Velero mapear o bucket S3..."
+          sleep 30
+          velero backup get
 
-    # 9. Inicializa o core do operador do Velero apontando para o bucket existente de backups
-    - name: 5. Inicializar Operador do Velero no Novo Cluster
-      run: |
-        velero install \
-          --provider aws \
-          --plugins velero/velero-plugin-for-aws:v1.10.0 \
-          --bucket solidary-tech-velero-backups-158176292469 \
-          --secret-file ./credentials-velero \
-          --backup-location-config region=us-west-2 \
-          --use-volume-snapshots=false
-
-    # 10. Aguarda sincronização e lista o histórico completo de backups no log para auditoria da banca
-    - name: 6. Sincronizar e Listar Backups Disponíveis no Bucket
-      run: |
-        echo "Aguardando 30 segundos para o Velero mapear o bucket S3..."
-        sleep 30
-        velero backup get
-
-    # 11. Descobre dinamicamente o último backup feito e dispara a restauração automática
-    - name: 7. Identificar e Restaurar Último Backup Disponível
-      run: |
-        # Obtém o nome do backup mais recente da lista ignorando o cabeçalho
-        LATEST_BACKUP=$(velero backup get | awk 'NR>1 {print $1}' | head -n 1)
-        
-        if [ -z "$LATEST_BACKUP" ]; then
-          echo "❌ Nenhum backup foi encontrado no bucket do S3!"
-          exit 1
-        fi
-        
-        echo "🔄 Último checkpoint identificado: $LATEST_BACKUP"
-        echo "🚀 Iniciando restauração automatizada..."
-        velero restore create --from-backup $LATEST_BACKUP --wait
-        echo "🎉 Failover e Restauração concluídos com sucesso em Oregon!"
+      - name: Identificar e Restaurar Último Backup Disponível
+        run: |
+          LATEST_BACKUP=$(velero backup get | awk 'NR>1 {print $1}' | head -n 1)
+          
+          if [ -z "$LATEST_BACKUP" ]; then
+            echo "❌ Nenhum backup foi encontrado no bucket do S3!"
+            exit 1
+          fi
+          
+          echo "🔄 Último checkpoint identificado: $LATEST_BACKUP"
+          echo "🚀 Iniciando restauração automatizada..."
+          velero restore create --from-backup $LATEST_BACKUP --wait
+          echo "🎉 Failover, Build de Imagens e Restauração concluídos com sucesso em Oregon!"
