@@ -1,6 +1,6 @@
 output "backup_bucket_name" {
   description = "Nome do bucket S3 onde os backups do Velero são armazenados"
-  value       = aws_s3_bucket.velero_backups.bucket
+  value       = "solidary-tech-velero-backups-158176292469"
 }
 
 output "backup_bucket_region" {
@@ -25,14 +25,14 @@ output "how_to_restore" {
 
 output "dr_terraform_state_bucket" {
   description = "Bucket em Oregon (us-west-2) já preparado pra hospedar o Terraform state num failover real"
-  value       = aws_s3_bucket.dr_terraform_state.bucket
+  value       = "solidary-tech-tfstate-dr-158176292469"
 }
 
 output "how_to_failover" {
   description = "Procedimento para reconstruir a infraestrutura em Oregon durante um DR real"
   value       = <<-EOT
     1) terraform init -reconfigure \
-         -backend-config="bucket=${aws_s3_bucket.dr_terraform_state.bucket}" \
+         -backend-config="bucket=solidary-tech-tfstate-dr-158176292469" \
          -backend-config="key=dr/terraform.tfstate" \
          -backend-config="region=us-west-2"
     2) terraform apply -var="region=us-west-2"
