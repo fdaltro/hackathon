@@ -70,3 +70,35 @@ YAML
 
   depends_on = [helm_release.argocd]
 }
+
+# ==========================================================
+# Application dedicada para a pasta infrastructure/ (HPA e
+# Ingress) - sem isso, esses manifestos nunca eram sincronizados
+# pelo ArgoCD, mesmo existindo no repositório.
+# ==========================================================
+resource "kubectl_manifest" "solidary_infrastructure" {
+  yaml_body = <<YAML
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: solidary-infrastructure
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: "https://github.com/fdaltro/hackathon.git"
+    targetRevision: HEAD
+    path: "solidary-gitops/infrastructure"
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: solidary
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+YAML
+
+  depends_on = [helm_release.argocd]
+}

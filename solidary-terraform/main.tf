@@ -110,3 +110,11 @@ module "kubecost" {
   cluster_name = var.cluster_name
   depends_on   = [module.eks]
 }
+
+# ==========================================================
+# 🌐 NGINX INGRESS CONTROLLER
+# ==========================================================
+module "ingress_nginx" {
+  source     = "./modules/ingress-nginx"
+  depends_on = [module.eks]
+}

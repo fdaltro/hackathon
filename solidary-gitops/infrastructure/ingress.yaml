@@ -3,11 +3,8 @@ kind: Ingress
 metadata:
   name: solidary-ingress
   namespace: solidary
-  annotations:
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
 spec:
+  ingressClassName: nginx
   rules:
   - http:
       paths:
