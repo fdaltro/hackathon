@@ -1,0 +1,102 @@
+name: "🚨 DR - Failover Regional Automático (Oregon)"
+
+on:
+  # Botão limpo: clique único, sem inputs manuais obrigatórios
+  workflow_dispatch:
+
+jobs:
+  failover:
+    name: "Executar Failover para us-west-2"
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Baixa o código do repositório para o runner
+    - name: Checkout do Código
+      uses: actions/checkout@v4
+
+    # 2. Configura as credenciais da AWS utilizando os Secrets do GitHub
+    - name: Configurar Credenciais AWS
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+        aws-region: us-west-2
+
+    # 3. Instala o Terraform no Runner
+    - name: Instalar Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.5.7"
+
+    # 4. Instala a CLI do Velero no Runner
+    - name: Instalar Velero CLI
+      run: |
+        curl -L https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz | tar xz
+        sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
+        velero version --client-only
+
+    # 5. Reconfigura o backend do Terraform apontando diretamente para o bucket estático de DR
+    - name: 1. Reconfigurar Backend do Terraform para Região de DR
+      working-directory: solidary-terraform
+      run: |
+        terraform init -reconfigure \
+          -backend-config="bucket=solidary-tech-tfstate-dr-158176292469" \
+          -backend-config="key=dr/terraform.tfstate" \
+          -backend-config="region=us-west-2"
+
+    # 6. Levanta toda a infraestrutura espelho (VPC, RDS, EKS) em Oregon
+    - name: 2. Reprovisionar Infraestrutura em Oregon (us-west-2)
+      working-directory: solidary-terraform
+      run: |
+        terraform apply -var="region=us-west-2" -auto-approve
+
+    # 7. Conecta o kubectl do runner ao novo cluster EKS recém-criado
+    - name: 3. Atualizar Kubeconfig do Novo Cluster
+      run: |
+        aws eks update-kubeconfig --region us-west-2 --name solidary-eks
+
+    # 8. Cria o arquivo temporário de credenciais para o Core do Velero
+    - name: 4. Preparar Credenciais do Velero
+      run: |
+        cat <<EOF > ./credentials-velero
+        [default]
+        aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws_secret_access_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws_session_token=${{ secrets.AWS_SESSION_TOKEN }}
+        EOF
+
+    # 9. Instala o core do operador do Velero apontando para o bucket estático de backups criado via CLI
+    - name: 5. Inicializar Operador do Velero no Novo Cluster
+      run: |
+        velero install \
+          --provider aws \
+          --plugins velero/velero-plugin-for-aws:v1.10.0 \
+          --bucket solidary-tech-velero-backups-158176292469 \
+          --secret-file ./credentials-velero \
+          --backup-location-config region=us-west-2 \
+          --snapshot-location-config region=us-west-2 \
+          --use-volume-snapshots=false
+
+    # 10. Aguarda sincronização e lista o histórico completo de backups no log para auditoria da banca
+    - name: 6. Sincronizar e Listar Backups Disponíveis no Bucket
+      run: |
+        echo "Aguardando 30 segundos para o Velero mapear o bucket S3..."
+        sleep 30
+        velero backup get
+
+    # 11. Descobre dinamicamente o último backup feito e dispara a restauração automática
+    - name: 7. Identificar e Restaurar Último Backup Disponível
+      run: |
+        # Obtém o nome do backup mais recente da lista ignorando o cabeçalho
+        LATEST_BACKUP=$(velero backup get | awk 'NR>1 {print $1}' | head -n 1)
+        
+        if [ -z "$LATEST_BACKUP" ]; then
+          echo "❌ Nenhum backup foi encontrado no bucket do S3!"
+          exit 1
+        fi
+        
+        echo "🔄 Último checkpoint identificado: $LATEST_BACKUP"
+        echo "🚀 Iniciando restauração automatizada..."
+        velero restore create --from-backup $LATEST_BACKUP --wait
+        echo "🎉 Failover e Restauração concluídos com sucesso em Oregon!"
