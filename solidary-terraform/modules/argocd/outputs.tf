@@ -17,9 +17,10 @@ data "kubernetes_service" "argocd_server" {
   depends_on = [helm_release.argocd]
 }
 
+
 output "argocd_url" {
   description = "URL de acesso ao ArgoCD"
-  value       = data.kubernetes_service.argocd_server.status[0].load_balancer[0].ingress[0].hostname
+  value       = try(data.kubernetes_service.argocd_server.status[0].load_balancer[0].ingress[0].hostname, "Aguardando LoadBalancer...")
 }
 
 output "argocd_password" {
