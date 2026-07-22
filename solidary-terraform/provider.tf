@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.0.0"
 
-  # CORREÇÃO: O backend S3 PRECISA ficar aqui dentro do bloco terraform
+  
   backend "s3" {
     bucket = "solidarytech-terraform-state-fase5"
     key    = "fase5/terraform.tfstate"
@@ -45,8 +45,7 @@ provider "aws" {
 }
 
 # Provider secundário para o bucket de backup do Velero, em uma região
-# diferente da região do cluster (DR cross-region real - confirmado
-# disponível nesta conta do AWS Academy).
+# diferente da região do cluster.
 provider "aws" {
   alias  = "dr"
   region = var.dr_region
