@@ -26,7 +26,7 @@ jobs:
     - name: Instalar Terraform
       uses: hashicorp/setup-terraform@v3
       with:
-        terraform_version: "1.5.7"
+        terraform_version: "1.9.0"
 
     # 4. Reconfigura o backend do Terraform apontando para o bucket de state em Oregon
     - name: Reconfigurar Backend do Terraform para Região de DR
@@ -37,7 +37,19 @@ jobs:
           -backend-config="key=dr/terraform.tfstate" \
           -backend-config="region=us-west-2"
 
-    # 5. Executa o destroy automatizado da infraestrutura em us-west-2
+    # 5. Remove LoadBalancers órfãos ANTES do destroy - sem isso, o
+    #    Internet Gateway/VPC trava na hora de destruir (mesmo problema
+    #    já visto em us-east-1 com ELBs do ArgoCD/Grafana/Ingress)
+    - name: Remover Services LoadBalancer órfãos
+      run: |
+        aws eks update-kubeconfig --region us-west-2 --name solidary-eks || true
+        kubectl delete svc --all -n ingress-nginx --timeout=60s || true
+        kubectl delete svc --all -n argocd --timeout=60s || true
+        kubectl delete svc --all -n observabilidade --timeout=60s || true
+        echo "Aguardando a AWS liberar os ELBs (30s)..."
+        sleep 30
+
+    # 6. Executa o destroy automatizado da infraestrutura em us-west-2
     - name: Executar Terraform Destroy
       working-directory: solidary-terraform
       run: |

@@ -41,7 +41,7 @@ jobs:
       - name: Instalar Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.5.7"
+          terraform_version: "1.9.0"
 
       - name: Reconfigurar Backend do Terraform para Região de DR
         working-directory: solidary-terraform
@@ -51,10 +51,28 @@ jobs:
             -backend-config="key=dr/terraform.tfstate" \
             -backend-config="region=us-west-2"
 
-      - name: Executar Terraform Apply
+      # NOTA: o módulo "velero" é propositalmente EXCLUÍDO deste apply
+      # via -target. Os buckets de backup do Velero e do TF state de DR
+      # já existem de verdade em us-west-2 (criados pelo apply original
+      # em us-east-1, via provider aws.dr) - não faz sentido o Terraform
+      # tentar recriá-los aqui. O Job 3 (restore-cluster) instala o
+      # Velero via CLI apontando diretamente para esses buckets já
+      # existentes, em vez de duplicar a instalação via Helm/Terraform.
+      - name: Executar Terraform Apply (excluindo module.velero)
         working-directory: solidary-terraform
         run: |
-          terraform apply -var="region=us-west-2" -auto-approve
+          terraform apply -var="region=us-west-2" -auto-approve \
+            -target=module.network \
+            -target=module.database \
+            -target=module.dynamodb \
+            -target=module.sqs \
+            -target=module.ecr \
+            -target=module.eks \
+            -target=module.k8s_config \
+            -target=module.argocd \
+            -target=module.observability \
+            -target=module.kubecost \
+            -target=module.ingress_nginx
         env:
           TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
           TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -106,6 +124,18 @@ jobs:
 
   # ==========================================================
   # JOB 3: Configuração do Cluster, Velero e Restauração
+  #
+  # O Velero é instalado aqui via CLI (não pelo módulo Terraform)
+  # de propósito, apontando direto para os buckets que JÁ EXISTEM
+  # em us-west-2 (criados no apply original em us-east-1). Isso
+  # evita duplicar/conflitar com o module.velero, que foi
+  # explicitamente excluído do apply do Job 1 via -target.
+  #
+  # NOTA sobre ordem: os pods restaurados aqui vão apontar
+  # inicialmente para a tag de imagem do backup (região antiga) e
+  # podem ficar em ImagePullBackOff por alguns instantes, até o
+  # Job 4 corrigir a tag para o ECR de Oregon. Isso é esperado
+  # neste fluxo de DR - documentar no vídeo de demonstração.
   # ==========================================================
   restore-cluster:
     name: "3. Restaurar Cluster e Aplicação via Velero"
