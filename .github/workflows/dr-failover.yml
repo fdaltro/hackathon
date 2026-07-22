@@ -213,13 +213,10 @@ jobs:
   # ==========================================================
   update-cluster-images:
     name: "4. Forçar Imagens de Oregon no Cluster de DR"
-    needs: [build-and-push-dr, restore-cluster]
+    needs: [set-version, build-and-push-dr, restore-cluster] # <--- Adicionado set-version aqui
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
-
       - name: Configurar Credenciais AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -232,15 +229,15 @@ jobs:
         run: |
           aws eks update-kubeconfig --region us-west-2 --name solidary-eks
 
-      - name: Patch direto nos Deployments do Cluster
+      - name: Atualizar imagens diretamente no cluster em us-west-2
         run: |
           VERSION="${{ needs.set-version.outputs.version }}"
           REGISTRY="158176292469.dkr.ecr.us-west-2.amazonaws.com"
           
-          echo "Aplicando versão $VERSION nos deployments de Oregon..."
+          echo "Aplicando versão $VERSION nos deployments do cluster..."
           
-          kubectl set image deployment/donation-service donation-service=${REGISTRY}/solidary-tech-donation-service:${VERSION} -n solidary --local -o yaml | kubectl apply -f -
-          kubectl set image deployment/ngo-service ngo-service=${REGISTRY}/solidary-tech-ngo-service:${VERSION} -n solidary --local -o yaml | kubectl apply -f -
-          kubectl set image deployment/volunteer-service volunteer-service=${REGISTRY}/solidary-tech-volunteer-service:${VERSION} -n solidary --local -o yaml | kubectl apply -f -
+          kubectl set image deployment/donation-service donation-service=${REGISTRY}/solidary-tech-donation-service:${VERSION} -n solidary
+          kubectl set image deployment/ngo-service ngo-service=${REGISTRY}/solidary-tech-ngo-service:${VERSION} -n solidary
+          kubectl set image deployment/volunteer-service volunteer-service=${REGISTRY}/solidary-tech-volunteer-service:${VERSION} -n solidary
           
           echo "🎉 Deployments atualizados com sucesso no cluster de DR!"
