@@ -37,12 +37,29 @@ jobs:
           -backend-config="key=dr/terraform.tfstate" \
           -backend-config="region=us-west-2"
 
-    # 5. Remove LoadBalancers órfãos ANTES do destroy - sem isso, o
-    #    Internet Gateway/VPC trava na hora de destruir (mesmo problema
-    #    já visto em us-east-1 com ELBs do ArgoCD/Grafana/Ingress)
-    - name: Remover Services LoadBalancer órfãos
+    # 5. Remove Ingress, ValidatingWebhookConfiguration do ingress-nginx e
+    #    LoadBalancers órfãos ANTES do destroy.
+    #
+    #    CAUSA RAIZ (namespaces presos em Terminating): o ingress-nginx é
+    #    instalado com admissionWebhooks habilitado, criando uma
+    #    ValidatingWebhookConfiguration cluster-scoped que intercepta
+    #    toda exclusão de objetos "Ingress" (ex: solidary-ingress, no
+    #    namespace "solidary"). Se apagarmos só o Service do
+    #    ingress-nginx (como antes) e deixarmos o webhook vivo, o
+    #    apiserver tenta chamar o webhook para validar a exclusão do
+    #    Ingress durante a finalização do namespace, não recebe resposta
+    #    (o backend já não existe) e, como failurePolicy=Fail é o padrão
+    #    do chart, a exclusão do Ingress trava para sempre - o que deixa
+    #    o namespace "solidary" (e por consequência o restante do
+    #    destroy) preso em Terminating. Por isso apagamos o Ingress e o
+    #    webhook diretamente, e só depois os Services (mesmo problema já
+    #    visto em us-east-1 com ELBs do ArgoCD/Grafana/Ingress).
+    - name: Remover Ingress, Webhooks e Services órfãos
       run: |
         aws eks update-kubeconfig --region us-west-2 --name solidary-eks || true
+        kubectl delete ingress --all --all-namespaces --timeout=60s || true
+        kubectl delete validatingwebhookconfiguration ingress-nginx-admission --ignore-not-found=true
+        kubectl delete mutatingwebhookconfiguration ingress-nginx-admission --ignore-not-found=true
         kubectl delete svc --all -n ingress-nginx --timeout=60s || true
         kubectl delete svc --all -n argocd --timeout=60s || true
         kubectl delete svc --all -n observabilidade --timeout=60s || true
