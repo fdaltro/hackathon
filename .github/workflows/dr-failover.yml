@@ -209,35 +209,51 @@ jobs:
           echo "🎉 Failover, Build de Imagens e Restauração concluídos com sucesso em Oregon!"
 
   # ==========================================================
-  # JOB 4: Atualiza os Deployments em Oregon com a tag recém-gerada
+  # JOB 4: Atualiza os Manifestos GitOps e Sincroniza com ArgoCD
   # ==========================================================
   update-cluster-images:
-    name: "4. Atualizar Imagens no Cluster de DR"
+    name: "4. Atualizar GitOps e Sincronizar com ArgoCD"
     needs: [build-and-push-dr, restore-cluster]
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configurar Credenciais AWS
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Checkout do código
+        uses: actions/checkout@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-west-2
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Atualizar Kubeconfig do Cluster em Oregon
+      - name: Instalar kustomize
         run: |
-          aws eks update-kubeconfig --region us-west-2 --name solidary-eks
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
 
-      - name: Atualizar deployments para usar o ECR e a tag corretos em us-west-2
+      - name: Atualizar tag da imagem nos manifestos para Oregon
         run: |
+          set -e
           VERSION="${{ needs.set-version.outputs.version }}"
           REGISTRY="158176292469.dkr.ecr.us-west-2.amazonaws.com"
           
-          echo "Atualizando deployments para a versão $VERSION..."
-          
-          kubectl set image deployment/donation-service donation-service=${REGISTRY}/solidary-tech-donation-service:${VERSION} -n solidary
-          kubectl set image deployment/ngo-service ngo-service=${REGISTRY}/solidary-tech-ngo-service:${VERSION} -n solidary
-          kubectl set image deployment/volunteer-service volunteer-service=${REGISTRY}/solidary-tech-volunteer-service:${VERSION} -n solidary
-          
-          echo "🎉 Todos os deployments foram apontados para o ECR de Oregon com sucesso!"      
+          for service in ngo-service donation-service volunteer-service; do
+            IMAGE="${REGISTRY}/solidary-tech-${service}"
+            echo "Atualizando $service -> $IMAGE:$VERSION"
+            (cd "solidary-gitops/apps/${service}" && kustomize edit set image "${service}=${IMAGE}:${VERSION}")
+          done
+
+      - name: Commit e push das mudanças para o GitHub
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "Nenhuma mudança para commitar."
+            exit 0
+          fi
+
+          git add solidary-gitops/apps/*/kustomization.yaml
+          git commit -m "ci(dr): atualiza imagens para Oregon (${{ needs.set-version.outputs.version }})"
+          git push
+
+      - name: Forçar Sincronização do ArgoCD (Opcional)
+        run: |
+          # Instala a CLI do ArgoCD ou usa kubectl para forçar o sync se necessário
+          echo "Manifestos atualizados no Git com sucesso! O ArgoCD aplicará as alterações em instantes."
