@@ -216,11 +216,15 @@ jobs:
     needs: [build-and-push-dr, restore-cluster]
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
 
       - name: Instalar kustomize
         run: |
