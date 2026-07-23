@@ -3,6 +3,9 @@ name: Terraform Destroy
 on:
   workflow_dispatch: # Este é o gatilho para execução manual via painel do GitHub
 
+env:
+  AWS_REGION: us-east-1 # Região de produção - chumbada aqui para não depender de secrets.AWS_REGION
+
 jobs:
   terraform-destroy:
     name: Terraform Destroy
@@ -12,7 +15,7 @@ jobs:
       TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
       TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       TF_VAR_aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
-      TF_VAR_region: ${{ secrets.AWS_REGION }}
+      TF_VAR_region: us-east-1
       TF_VAR_datadog_api_key: ${{ secrets.DATADOG_API_KEY }}
       TF_VAR_datadog_app_key: ${{ secrets.DATADOG_APP_KEY }}
       TF_VAR_datadog_site: "us5.datadoghq.com"
@@ -32,25 +35,25 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-1
 
       # Diagnóstico: mostra no log EXATAMENTE qual identidade AWS está
-      # autenticando neste run - se aparecer diferente do esperado, ou
-      # der erro aqui, o problema é credencial/sessão, não o resto do
-      # pipeline. Também confirma se secrets.AWS_REGION está de fato
-      # setado (se estiver vazio, esse comando falha/mostra "None" em
-      # vez de silenciosamente seguir em frente).
-      - name: Verificar Identidade e Região AWS
-        run: |
-          echo "Região configurada: ${{ secrets.AWS_REGION }}"
-          aws sts get-caller-identity
+      # autenticando neste run.
+      - name: Verificar Identidade AWS
+        run: aws sts get-caller-identity
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        # O -reconfigure garante que a pipeline sempre inicie fresca sem conflitos de cache
-        run: terraform init -reconfigure
+        # -reconfigure com o backend de PRODUÇÃO explícito - evita o problema
+        # de uma execução anterior (local ou de outro job) ter deixado o
+        # .terraform/ apontando para o backend de DR (us-west-2) em cache.
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=solidarytech-terraform-state-fase5" \
+            -backend-config="key=fase5/terraform.tfstate" \
+            -backend-config="region=us-east-1"
 
       # Remove Ingress, ValidatingWebhookConfiguration do ingress-nginx e
       # LoadBalancers órfãos ANTES do destroy - mesma causa raiz documentada
@@ -58,16 +61,9 @@ jobs:
       # Ingress "solidary-ingress" (namespace solidary) quando o Service que
       # o atende já não existe, deixando os namespaces presos em Terminating
       # e o terraform destroy falhando por timeout.
-      #
-      # NOTA: o update-kubeconfig NÃO tem mais "|| true" - se ele falhar,
-      # o step inteiro falha e para aqui, em vez de deixar os kubectl
-      # seguintes rodarem contra um kubeconfig inválido e mascarar o erro
-      # real com os "|| true" deles. O "kubectl auth can-i" logo depois
-      # confirma explicitamente se a identidade atual tem permissão de
-      # verdade no cluster, ANTES de tentar apagar qualquer coisa.
       - name: Remover Ingress, Webhooks e Services órfãos
         run: |
-          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name solidary-eks
+          aws eks update-kubeconfig --region us-east-1 --name solidary-eks
           kubectl auth can-i delete namespaces
           kubectl delete ingress --all --all-namespaces --timeout=60s || true
           kubectl delete validatingwebhookconfiguration ingress-nginx-admission --ignore-not-found=true
@@ -79,6 +75,4 @@ jobs:
           sleep 30
 
       - name: Terraform Destroy
-        # -var="region=..." explícito, para não depender só do TF_VAR_region
-        # herdado do ambiente - mesmo padrão de segurança usado no dr-destroy.yml
-        run: terraform destroy -var="region=${{ secrets.AWS_REGION }}" -auto-approve
+        run: terraform destroy -var="region=us-east-1" -auto-approve
