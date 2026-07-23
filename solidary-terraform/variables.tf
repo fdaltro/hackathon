@@ -54,7 +54,7 @@ variable "default_tags" {
   default = {
     Project     = "SolidaryTech"
     Environment = "Production"
-    CostCenter  = "FIAP-Fase5-Grupo12"
+    CostCenter  = "FIAP-Fase5-Grupo55"
     ManagedBy   = "Terraform"
   }
 }
