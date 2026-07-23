@@ -8,4 +8,4 @@ namespace: solidary
 images:
 - name: volunteer-service
   newName: 158176292469.dkr.ecr.us-east-1.amazonaws.com/solidary-tech-volunteer-service
-  newTag: v1.0.0-c37083f
+  newTag: v1.0.0-6a74372
