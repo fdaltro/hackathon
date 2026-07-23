@@ -45,8 +45,7 @@ provider "aws" {
 }
 
 # Provider secundário para o bucket de backup do Velero, em uma região
-# diferente da região do cluster (DR cross-region real - confirmado
-# disponível nesta conta do AWS Academy).
+# diferente da região do cluster (DR cross-region real).
 provider "aws" {
   alias  = "dr"
   region = var.dr_region

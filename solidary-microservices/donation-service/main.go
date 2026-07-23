@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/XSAM/otelsql"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -17,6 +18,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
@@ -24,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Donation struct {
@@ -173,9 +176,17 @@ func main() {
 		log.Fatal("DATABASE_URL é obrigatória")
 	}
 
-	db, err := sql.Open("pgx", dbURL)
+	// otelsql.Open envolve o driver pgx e transforma CADA QueryContext/
+	// QueryRowContext/ExecContext em um span filho do span HTTP ativo -
+	// é isso que faz o Postgres aparecer no trace. Chamadas que usam
+	// QueryRow/Query (sem Context) continuam funcionando, mas SEM span -
+	// por isso os handlers abaixo foram trocados para *Context.
+	db, err := otelsql.Open("pgx", dbURL, otelsql.WithAttributes(semconv.DBSystemPostgreSQL))
 	if err != nil || db.Ping() != nil {
 		log.Fatalf("Erro ao conectar ao banco de dados: %v", err)
+	}
+	if _, err := otelsql.RegisterDBStatsMetrics(db, otelsql.WithAttributes(semconv.DBSystemPostgreSQL)); err != nil {
+		log.Printf("AVISO: não foi possível registrar métricas do pool de conexões: %v", err)
 	}
 	log.Println("Conectado ao PostgreSQL (donation-service).")
 
@@ -220,7 +231,7 @@ func (a *App) DonationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		d.Status = "APPROVED" // Simulação de gateway de pagamento
-		err := a.DB.QueryRow(
+		err := a.DB.QueryRowContext(r.Context(),
 			"INSERT INTO donations (ngo_id, amount, donor_name, status) VALUES ($1, $2, $3, $4) RETURNING id, created_at",
 			d.NgoID, d.Amount, d.DonorName, d.Status,
 		).Scan(&d.ID, &d.CreatedAt)
@@ -232,7 +243,12 @@ func (a *App) DonationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if a.SqsSvc != nil {
-			go a.sendNotificationEvent(d)
+			// context.WithoutCancel preserva o trace/span ID (para o SQS
+			// continuar linkado ao trace da requisição), mas desacopla do
+			// cancelamento do r.Context() - que o net/http cancela assim
+			// que a resposta HTTP é escrita, o que aconteceria ANTES da
+			// goroutine terminar de enviar pro SQS.
+			go a.sendNotificationEvent(context.WithoutCancel(r.Context()), d)
 		}
 
 		w.WriteHeader(http.StatusCreated)
@@ -241,7 +257,7 @@ func (a *App) DonationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodGet {
-		rows, err := a.DB.Query("SELECT id, ngo_id, amount, donor_name, status, created_at FROM donations ORDER BY id DESC")
+		rows, err := a.DB.QueryContext(r.Context(), "SELECT id, ngo_id, amount, donor_name, status, created_at FROM donations ORDER BY id DESC")
 		if err != nil {
 			http.Error(w, `{"error":"Erro interno"}`, http.StatusInternalServerError)
 			return
@@ -262,13 +278,24 @@ func (a *App) DonationHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, `{"error":"Método não permitido"}`, http.StatusMethodNotAllowed)
 }
 
-func (a *App) sendNotificationEvent(d Donation) {
+func (a *App) sendNotificationEvent(ctx context.Context, d Donation) {
+	tracer := otel.Tracer("donation-service")
+	ctx, span := tracer.Start(ctx, "SQS SendMessage",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "aws_sqs"),
+			attribute.String("messaging.destination.name", a.SqsQueueURL),
+		),
+	)
+	defer span.End()
+
 	body, _ := json.Marshal(d)
-	_, err := a.SqsSvc.SendMessage(&sqs.SendMessageInput{
+	_, err := a.SqsSvc.SendMessageWithContext(ctx, &sqs.SendMessageInput{
 		MessageBody: aws.String(string(body)),
 		QueueUrl:    aws.String(a.SqsQueueURL),
 	})
 	if err != nil {
+		span.RecordError(err)
 		log.Printf("Falha ao despachar evento SQS: %v", err)
 	}
 }

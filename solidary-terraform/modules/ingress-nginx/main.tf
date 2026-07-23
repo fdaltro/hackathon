@@ -6,10 +6,6 @@
 # verdade - sem um controller instalado, o Ingress fica "órfão"
 # e nunca expõe nada externamente.
 #
-# Escolhido NGINX em vez do AWS Load Balancer Controller por
-# simplicidade: não exige OIDC/IRSA configurado no cluster
-# (o AWS LB Controller precisa de um IAM Role via IRSA, o que
-# adiciona complexidade extra sem necessidade real aqui).
 # ==========================================================
 
 resource "kubernetes_namespace" "ingress_nginx" {

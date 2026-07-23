@@ -56,11 +56,7 @@ jobs:
             -backend-config="region=us-east-1"
 
       # Remove Ingress, ValidatingWebhookConfiguration do ingress-nginx e
-      # LoadBalancers órfãos ANTES do destroy - mesma causa raiz documentada
-      # no dr-destroy.yml: o webhook do ingress-nginx trava a exclusão do
-      # Ingress "solidary-ingress" (namespace solidary) quando o Service que
-      # o atende já não existe, deixando os namespaces presos em Terminating
-      # e o terraform destroy falhando por timeout.
+      # LoadBalancers órfãos ANTES do destroy 
       - name: Remover Ingress, Webhooks e Services órfãos
         run: |
           aws eks update-kubeconfig --region us-east-1 --name solidary-eks
