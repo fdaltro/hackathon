@@ -7,6 +7,18 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import logging
 
+# Instrumentação MANUAL e explícita do psycopg2 - o agente de zero-code
+# (opentelemetry-instrument) detecta se deve instrumentar checando o nome
+# exato do pacote pip instalado, e procura por "psycopg2". Como o
+# requirements.txt instala "psycopg2-binary" (nome diferente nos metadados,
+# mesmo módulo Python), essa detecção automática falha silenciosamente e
+# o driver nunca é instrumentado - só o Flask. Chamando .instrument() aqui
+# direto, isso é contornado: o TracerProvider global já foi configurado
+# pelo processo "opentelemetry-instrument" que envolve o gunicorn, então
+# só precisamos registrar o instrumentador do driver nele.
+from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+Psycopg2Instrumentor().instrument()
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 log = logging.getLogger(__name__)
 
