@@ -34,6 +34,17 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # Diagnóstico: mostra no log EXATAMENTE qual identidade AWS está
+      # autenticando neste run - se aparecer diferente do esperado, ou
+      # der erro aqui, o problema é credencial/sessão, não o resto do
+      # pipeline. Também confirma se secrets.AWS_REGION está de fato
+      # setado (se estiver vazio, esse comando falha/mostra "None" em
+      # vez de silenciosamente seguir em frente).
+      - name: Verificar Identidade e Região AWS
+        run: |
+          echo "Região configurada: ${{ secrets.AWS_REGION }}"
+          aws sts get-caller-identity
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -47,9 +58,17 @@ jobs:
       # Ingress "solidary-ingress" (namespace solidary) quando o Service que
       # o atende já não existe, deixando os namespaces presos em Terminating
       # e o terraform destroy falhando por timeout.
+      #
+      # NOTA: o update-kubeconfig NÃO tem mais "|| true" - se ele falhar,
+      # o step inteiro falha e para aqui, em vez de deixar os kubectl
+      # seguintes rodarem contra um kubeconfig inválido e mascarar o erro
+      # real com os "|| true" deles. O "kubectl auth can-i" logo depois
+      # confirma explicitamente se a identidade atual tem permissão de
+      # verdade no cluster, ANTES de tentar apagar qualquer coisa.
       - name: Remover Ingress, Webhooks e Services órfãos
         run: |
-          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name solidary-eks || true
+          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name solidary-eks
+          kubectl auth can-i delete namespaces
           kubectl delete ingress --all --all-namespaces --timeout=60s || true
           kubectl delete validatingwebhookconfiguration ingress-nginx-admission --ignore-not-found=true
           kubectl delete mutatingwebhookconfiguration ingress-nginx-admission --ignore-not-found=true
@@ -60,4 +79,6 @@ jobs:
           sleep 30
 
       - name: Terraform Destroy
-        run: terraform destroy -auto-approve
+        # -var="region=..." explícito, para não depender só do TF_VAR_region
+        # herdado do ambiente - mesmo padrão de segurança usado no dr-destroy.yml
+        run: terraform destroy -var="region=${{ secrets.AWS_REGION }}" -auto-approve
