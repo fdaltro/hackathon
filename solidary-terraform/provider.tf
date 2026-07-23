@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.0.0"
 
-  
+  # CORREÇÃO: O backend S3 PRECISA ficar aqui dentro do bloco terraform
   backend "s3" {
     bucket = "solidarytech-terraform-state-fase5"
     key    = "fase5/terraform.tfstate"
@@ -45,7 +45,8 @@ provider "aws" {
 }
 
 # Provider secundário para o bucket de backup do Velero, em uma região
-# diferente da região do cluster.
+# diferente da região do cluster (DR cross-region real - confirmado
+# disponível nesta conta do AWS Academy).
 provider "aws" {
   alias  = "dr"
   region = var.dr_region
@@ -58,22 +59,37 @@ provider "aws" {
 provider "kubernetes" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  token                  = data.aws_eks_cluster_auth.cluster.token
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", var.cluster_name, "--region", var.region]
+  }
 }
 
 provider "helm" {
   kubernetes {
     host                   = module.eks.cluster_endpoint
     cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-    token                  = data.aws_eks_cluster_auth.cluster.token
+
+    exec {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "aws"
+      args        = ["eks", "get-token", "--cluster-name", var.cluster_name, "--region", var.region]
+    }
   }
 }
 
 provider "kubectl" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  token                  = data.aws_eks_cluster_auth.cluster.token
   load_config_file       = false
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", var.cluster_name, "--region", var.region]
+  }
 }
 
 provider "datadog" {
