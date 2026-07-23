@@ -1,5 +1,5 @@
 # --- Stage 1: Build da aplicação ---
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 # Instala certificados SSL e ferramentas básicas de compilação
 RUN apk update && apk add --no-cache git ca-certificates && update-ca-certificates
