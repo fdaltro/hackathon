@@ -1,4 +1,4 @@
-# --- Stage 1: Build e Instalação de Dependências ----
+# --- Stage 1: Build e Instalação de Dependências --
 FROM python:3.9-slim AS builder
 
 WORKDIR /app

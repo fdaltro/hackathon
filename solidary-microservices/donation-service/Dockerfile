@@ -1,4 +1,4 @@
-# --- Stage 1: Build da aplicação ---
+# --- Stage 1: Build da aplicação ----
 FROM golang:1.25-alpine AS builder
 
 # Instala certificados SSL e ferramentas básicas de compilação
@@ -14,7 +14,7 @@ RUN go mod download
 # Copia o restante do código fonte
 COPY . .
 
-# Compila o binário de forma estática (sem dependências de CGO) e otimizado para produção
+# Compila o binário de forma estática (sem dependências de CGO) e otimizado para produção -
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s" \
     -o donation-service .
