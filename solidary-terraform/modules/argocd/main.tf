@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    # Isso avisa ao módulo que o 'kubectl' vem do gavinbunney, não da hashicorp
+    # Isso avisa ao módulo que o 'kubectl' vem do gavinbunney, não da hashicorp --
     kubectl = {
       source  = "gavinbunney/kubectl"
       version = ">= 1.14.0"
